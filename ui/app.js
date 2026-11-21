@@ -926,6 +926,34 @@ window.addEventListener('keydown', (ev) => {
   else if (ev.key === '0') { ev.preventDefault(); Fmt.resetSize(activePanel()); }
 });
 
+// ---- 단축키: ⌘L 구절 이동, ⌘F 검색 탭, ⌘1~4 탭 전환, ←/→ 이전·다음 장
+function editingFocus() {
+  const a = document.activeElement;
+  return a && (a.matches('input,textarea,select') || a.isContentEditable);
+}
+window.addEventListener('keydown', (ev) => {
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (mod) {
+    const k = ev.key.toLowerCase();
+    if (k === 'l') { ev.preventDefault(); showView('bible'); $('#goto').focus(); $('#goto').select(); return; }
+    if (k === 'f') { ev.preventDefault(); showView('search'); $('#q').focus(); $('#q').select(); return; }
+    if (/^[1-4]$/.test(ev.key)) {
+      ev.preventDefault();
+      const v = { '1': 'bible', '2': 'search', '3': 'articles', '4': 'sources' }[ev.key];
+      showView(v);
+      return;
+    }
+    return;
+  }
+  // ←/→: 입력 칸에 초점이 없을 때만 이전·다음 장
+  if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+    if (editingFocus()) return;
+    if (state.view !== 'bible') return;
+    ev.preventDefault();
+    if (ev.key === 'ArrowLeft') $('#prev').click(); else $('#next').click();
+  }
+});
+
 // ---- 인용 복사 (2,000자 제한)
 $('#cite').onclick = async () => {
   if (!state.sel.size) return alert('복사할 절을 누르세요. (Shift+누르기로 범위 선택)');
@@ -956,12 +984,73 @@ async function doSearch() {
   const area = $('#area').value;
   const hits = await invoke('search_text', { q, area, vers: state.vers }).catch((x) => { $('#results').innerHTML = `<p class="err">${esc(x)}</p>`; return null; });
   if (!hits) return;
-  const vname = VNAME();
-  $('#results').innerHTML = (hits.length ? '' : '<p class="muted">결과가 없습니다.</p>') + hits.map((h, i) => `<div class="hit" data-i="${i}"><b>${h.area === 'article' ? '소논문 ' + esc(h.ref_) : esc(bookName(h.bk)) + ' ' + h.ch + (h.v ? ':' + h.v : '')}</b> <span class="tag">${esc(h.area === 'bible' ? vname[h.src] || h.src : h.src)}</span><div>${esc(h.snippet).replace(/\[([^\]]*)\]/g, '<mark>$1</mark>')}</div></div>`).join('');
-  $('#results').onclick = (ev) => { const d = ev.target.closest('.hit'); if (!d) return; const h = hits[+d.dataset.i]; if (h.area === 'article') { showView('articles'); openArticle(h.note_id, h.ref_); return; } state.bk = h.bk || state.bk; state.ch = h.ch || 1; showView('bible'); openChapter(h.v || null); };
+  renderSearchHits($('#results'), hits, q, area);
 }
 $('#dosearch').onclick = doSearch;
 $('#q').addEventListener('keydown', (ev) => ev.key === 'Enter' && doSearch());
+
+// ---- 검색 결과 화면: 검색어 강조(서식 강조색)·책별 건수·책으로 거르기·빈 결과 안내
+// 검색어를 여러 낱말로 나눠 부분 일치도 강조한다(정규식 특수문자는 문자로).
+function hlWords(text, q) {
+  let html = esc(text).replace(/\[([^\]]*)\]/g, '<mark>$1</mark>'); // 백엔드가 [..] 로 표시한 일치 구간
+  const words = String(q || '').trim().split(/\s+/).filter((w) => w.length > 1);
+  if (!words.length) return html;
+  // 이미 <mark> 안은 건너뛰고 텍스트 부분만 다시 강조한다.
+  const re = new RegExp(words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  return html.replace(/(<mark>.*?<\/mark>)|([\s\S]*?)(?=<mark>|<\/mark>|$)/g, (m, mark, txt) => {
+    if (mark) return mark;
+    return txt.replace(re, (s) => `<mark>${s}</mark>`);
+  });
+}
+function bookSummary(hits) {
+  const m = new Map();
+  for (const h of hits) {
+    if (h.area === 'article') { const k = '소논문'; m.set(k, (m.get(k) || 0) + 1); continue; }
+    const name = bookName(h.bk);
+    m.set(name, (m.get(name) || 0) + 1);
+  }
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+function renderSearchHits(container, hits, q, area) {
+  container.textContent = '';
+  const vname = VNAME();
+  if (!hits.length) {
+    container.innerHTML = `<div class="sr-empty"><p>결과가 없습니다.</p><p class="muted">다른 검색어로 다시 시도하거나, 검색 범위를 바꿔 보세요.</p></div>`;
+    return;
+  }
+  const summary = bookSummary(hits);
+  const bookBtns = `<button class="sr-filter on" data-filter="__all">전체 ${hits.length}</button>` +
+    summary.map(([name, n]) => `<button class="sr-filter" data-filter="${esc(name)}">${esc(name)} ${n}</button>`).join('');
+  container.innerHTML = `<div class="sr-summary mutable">${esc(summary.map(([name, n]) => `${name} ${n}건`).join(' · '))}</div>` +
+    `<div class="sr-filter-bar">${bookBtns}</div><div class="sr-list"></div>`;
+  const list = container.querySelector('.sr-list');
+  const draw = (filter) => {
+    const show = hits.filter((h) => filter === '__all' || (h.area === 'article' ? '소논문' : bookName(h.bk)) === filter);
+    const frag = document.createDocumentFragment();
+    hits.forEach((h, i) => {
+      if (filter !== '__all' && (h.area === 'article' ? '소논문' : bookName(h.bk)) !== filter) return;
+      const d = document.createElement('div');
+      d.className = 'hit';
+      d.dataset.i = i; d.dataset.bk = h.area === 'article' ? '' : String(h.bk);
+      d.innerHTML = `<b>${h.area === 'article' ? '소논문 ' + esc(h.ref_) : esc(bookName(h.bk)) + ' ' + h.ch + (h.v ? ':' + h.v : '')}</b> <span class="tag">${esc(h.area === 'bible' ? vname[h.src] || h.src : h.src)}</span><div>${hlWords(h.snippet, q)}</div>`;
+      frag.appendChild(d);
+    });
+    list.innerHTML = ''; list.appendChild(frag);
+  };
+  draw('__all');
+  container.querySelector('.sr-filter-bar').onclick = (ev) => {
+    const b = ev.target.closest('.sr-filter'); if (!b) return;
+    container.querySelectorAll('.sr-filter').forEach((x) => x.classList.toggle('on', x === b));
+    draw(b.dataset.filter);
+  };
+  list.onclick = (ev) => {
+    const d = ev.target.closest('.hit'); if (!d) return;
+    const h = hits[+d.dataset.i];
+    if (h.area === 'article') { showView('articles'); openArticle(h.note_id, h.ref_); return; }
+    state.bk = h.bk || state.bk; state.ch = h.ch || 1; showView('bible'); openChapter(h.v || null);
+  };
+  void area;
+}
 
 // ---- 소논문 (좌측 목록은 기존 화면, 우측은 소논문 화면)
 async function loadArticles() {

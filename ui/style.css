@@ -35,7 +35,13 @@ table.parse td,table.parse th{border-bottom:1px solid var(--line);padding:2px 6p
 table.parse tr{cursor:pointer}
 .lex{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-top:10px}
 .hit{padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer}
-.hit b,.hit mark{background:var(--sel);color:inherit}
+.sr-summary{color:var(--mut);font-size:13px;margin-bottom:4px}
+.sr-filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.sr-filter{font-size:12px}
+.sr-empty{padding:16px 8px;text-align:center}
+.sr-empty p{margin:4px 0}
+.hit b{background:var(--sel);color:inherit}
+.hit mark{background:var(--hl,#ffe08a);color:inherit}
 .file{display:flex;gap:10px;align-items:center;padding:4px 0}
 .barfill{height:8px;background:var(--line);border-radius:4px;overflow:hidden;width:360px;display:inline-block;vertical-align:middle}
 #fill{height:100%;width:0;background:var(--acc)}
