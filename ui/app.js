@@ -509,6 +509,7 @@ function invalidateCache() { for (const k in cache) delete cache[k]; }
 function renderBody(panel) {
   const ref = panelRef(panel);
   const vers = panel.settings.vers && panel.settings.vers.length ? panel.settings.vers : [...state.vers];
+  const side = panel.settings.versLayout === 'side' && vers.length > 1;
   const el = panel.body;
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
   cached(loadRows, vers).then((rows) => {
@@ -520,12 +521,25 @@ function renderBody(panel) {
     if (!useGlobal && panel.settings.maxW) inline += `max-width:${panel.settings.maxW};`;
     el.style.cssText = inline;
     const ownSel = panel.linked ? state.sel : new Set(panel.ref && panel.ref.v != null ? [panel.ref.v] : []);
-    el.innerHTML = rows.map((r) => {
+    // 번역본 표시 방식 토글 줄(여러 번역본일 때만)
+    const toggle = vers.length > 1
+      ? `<div class="vers-layout"><button type="button" class="${side ? '' : 'on'}" data-vl="stack">위아래</button><button type="button" class="${side ? 'on' : ''}" data-vl="side">나란히</button></div>`
+      : '';
+    const content = rows.map((r) => {
       const sel = ownSel.has(+r.v);
-      return `<div class="vrow ${sel ? 'sel' : ''}" data-v="${r.v}" data-bk="${ref.bk}" data-ch="${ref.ch}">` +
+      return `<div class="vrow ${sel ? 'sel' : ''}${side ? ' side' : ''}" data-v="${r.v}" data-bk="${ref.bk}" data-ch="${ref.ch}"${side ? ` style="--side-cols:${vers.length}"` : ''}>` +
         `<span class="n vnum ${Fmt.value().target.body.vn}">${r.v}</span>` +
-        `<div class="t">${r.texts.map((t) => `<div>${vers.length > 1 ? `<span class="vn">${esc(VNAME()[t.ver] || t.ver)}</span>` : ''}${t.html}</div>`).join('')}</div></div>`;
+        `<div class="t">${r.texts.map((t) => `<span class="tline">${vers.length > 1 ? `<span class="vn">${esc(VNAME()[t.ver] || t.ver)}</span>` : ''}${t.html}</span>`).join('')}</div></div>`;
     }).join('') || '<p class="muted">이 장의 본문이 없습니다.</p>';
+    el.innerHTML = toggle + content;
+    const vl = el.querySelector('.vers-layout');
+    if (vl) vl.onclick = (ev) => {
+      const b = ev.target.closest('button[data-vl]');
+      if (!b) return;
+      panel.settings.versLayout = b.dataset.vl;
+      panel.saveSettings();
+      renderBody(panel);
+    };
   }).catch((x) => { el.innerHTML = `<p class="err">${esc(x)}</p>`; });
 }
 function panelByIdLive(id) { return Layout.panelById(id); }
@@ -746,12 +760,14 @@ function renderArticlePanel(panel) {
   invoke('articles').then((list) => {
     if (panel !== panelByIdLive(panel.id)) return;
     el.innerHTML = list.length ? list.map((a) => `<div class="hit" data-id="${a.id}" data-t="${esc(a.title)}"><b>${esc(a.title)}</b> <span class="tag">${esc(a.src_name)}</span> <span class="muted">${esc(a.section)} · ${a.chars.toLocaleString()}자</span></div>`).join('') : '<p class="muted">소논문 자료가 없습니다.</p>';
-    el.onclick = (ev) => { const d = ev.target.closest('.hit'); if (d) openArticleBody(d.dataset.id, d.dataset.t, el); };
+    el.onclick = (ev) => { const d = ev.target.closest('.hit'); if (d) openArticleBody(d.dataset.id, d.dataset.t, el, panel); };
   }).catch((x) => { el.innerHTML = `<p class="err">${esc(x)}</p>`; });
 }
-async function openArticleBody(id, title, el) {
+async function openArticleBody(id, title, el, panel) {
   const body = await invoke('article_body', { id }).catch((x) => `<p class="err">${esc(x)}</p>`);
-  el.innerHTML = `<div id="article-title">${esc(title || '')}</div>${body}`;
+  el.innerHTML = `<button class="p-btn" id="art-back" title="목록으로">◀ 목록</button><div id="article-title">${esc(title || '')}</div><div class="art-body fmt-body">${body}</div>`;
+  const back = el.querySelector('#art-back');
+  if (back && panel) back.onclick = () => renderArticlePanel(panel);
 }
 
 function renderPanel(panel) {
@@ -1220,15 +1236,23 @@ function renderSearchHits(container, hits, q, area) {
   void area;
 }
 
-// ---- 소논문 (좌측 목록은 기존 화면, 우측은 소논문 화면)
+// ---- 소논문 (좌측 목록, 우측 본문)
+let _articles = [];
+let _articleSel = null;
 async function loadArticles() {
-  const list = await invoke('articles').catch(() => []);
-  $('#articlelist').innerHTML = list.length ? list.map((a) => `<div class="hit" data-id="${a.id}" data-t="${esc(a.title)}"><b>${esc(a.title)}</b> <span class="tag">${esc(a.src_name)}</span> <span class="muted">${esc(a.section)} · ${a.chars.toLocaleString()}자</span></div>`).join('') : '<p class="muted">소논문 자료가 없습니다.</p>';
+  _articles = await invoke('articles').catch(() => []);
+  const listEl = $('#articlelist');
+  listEl.innerHTML = _articles.length ? _articles.map((a) => `<div class="hit" data-id="${a.id}" data-t="${esc(a.title)}" data-src="${esc(a.src_name)}" data-sec="${esc(a.section)}" data-chars="${a.chars}"><b>${esc(a.title)}</b> <span class="tag">${esc(a.src_name)}</span> <span class="muted">${esc(a.section)} · ${a.chars.toLocaleString()}자</span></div>`).join('') : '<p class="muted">소논문 자료가 없습니다. 「자료 출처」에서 주석·소논문 자료를 받으면 이곳에 목록이 나옵니다.</p>';
+  listEl.querySelectorAll('.hit').forEach((h) => h.classList.toggle('sel', +h.dataset.id === _articleSel));
 }
-$('#articlelist').addEventListener('click', (ev) => { const d = ev.target.closest('.hit'); if (d) openArticle(+d.dataset.id, d.dataset.t); });
-async function openArticle(id, title) {
+$('#articlelist').addEventListener('click', (ev) => { const d = ev.target.closest('.hit'); if (d) openArticle(+d.dataset.id, d.dataset.t, { src: d.dataset.src, sec: d.dataset.sec, chars: +d.dataset.chars }); });
+async function openArticle(id, title, meta) {
+  _articleSel = id;
+  const listEl = $('#articlelist');
+  listEl.querySelectorAll('.hit').forEach((h) => h.classList.toggle('sel', +h.dataset.id === id));
   const body = await invoke('article_body', { id }).catch((x) => `<p class="err">${esc(x)}</p>`);
-  $('#articlebody').innerHTML = `<div id="article-title">${esc(title || '')}</div>${body}`;
+  const metaHtml = meta ? `<div id="article-meta">${esc(meta.src || '')}${meta.sec ? ' · ' + esc(meta.sec) : ''}${meta.chars ? ' · ' + meta.chars.toLocaleString() + '자' : ''}</div>` : '';
+  $('#articlebody').innerHTML = `<div id="article-title">${esc(title || '')}</div>${metaHtml}<div class="art-body fmt-body">${body}</div>`;
 }
 
 

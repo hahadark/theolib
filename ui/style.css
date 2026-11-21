@@ -1,12 +1,12 @@
-:root{--bg:#fbfaf7;--fg:#222;--mut:#777;--line:#ddd;--acc:#264678;--sel:#fff3c4}
-@media (prefers-color-scheme:dark){:root{--bg:#1c1c1e;--fg:#e8e8e8;--mut:#999;--line:#3a3a3c;--acc:#8fb4ee;--sel:#4a4220}}
+:root{--bg:#fbfaf7;--fg:#222;--mut:#777;--line:#ddd;--acc:#264678;--sel:#fff3c4;--err:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1c1e;--fg:#e8e8e8;--mut:#999;--line:#3a3a3c;--acc:#8fb4ee;--sel:#4a4220;--err:#e06c75}}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui-font,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif);font-size:var(--ui-size,15px);line-height:var(--ui-line,1.6);letter-spacing:var(--ui-letter,0em);display:flex;flex-direction:column}
 header{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line)}
 .brand{color:var(--acc)}
 .spacer{flex:1}
-.future{font-size:12px;color:var(--mut)}
+.future{font-size:.8em;color:var(--mut)}
 nav button,.bar button,button{background:none;border:1px solid var(--line);color:var(--fg);padding:3px 10px;border-radius:6px;cursor:pointer}
 nav button.on,button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 input,select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
@@ -14,7 +14,7 @@ main{flex:1;min-height:0;display:flex}
 section{flex:1;display:flex;flex-direction:column;min-width:0}
 section[hidden]{display:none}
 .bar{display:flex;gap:8px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.vers label{margin-right:8px;white-space:nowrap;font-size:13px}
+.vers label{margin-right:8px;white-space:nowrap;font-size:.867em}
 .cols{flex:1;display:flex;min-height:0}
 .pane{overflow:auto;padding:12px 16px;flex:1}
 .side{flex:0 0 42%;border-left:1px solid var(--line)}
@@ -23,21 +23,21 @@ section[hidden]{display:none}
 .vrow.sel{background:var(--sel)}
 .vrow .n{color:var(--mut);width:2em;text-align:right;flex:none}
 .vrow .t{flex:1;min-width:0}
-.vrow .t .vn{font-size:11px;color:var(--mut);margin-right:6px}
-a.sc{font-size:10px;color:var(--acc);vertical-align:super;margin:0 2px;cursor:pointer;text-decoration:none}
+.vrow .t .vn{font-size:.733em;color:var(--mut);margin-right:6px}
+a.sc{font-size:.667em;color:var(--acc);vertical-align:super;margin:0 2px;cursor:pointer;text-decoration:none}
 .subtabs{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0}
 .subtabs button.on{font-weight:600}
 .note{border-top:1px solid var(--line);padding:8px 0}
-.note h4{margin:0 0 4px;font-size:14px}
-.tag{display:inline-block;font-size:11px;background:var(--line);border-radius:10px;padding:0 8px;margin-right:6px;color:var(--fg)}
-table.parse{border-collapse:collapse;font-size:13px;width:100%}
+.note h4{margin:0 0 4px;font-size:.933em}
+.tag{display:inline-block;font-size:.733em;background:var(--line);border-radius:10px;padding:0 8px;margin-right:6px;color:var(--fg)}
+table.parse{border-collapse:collapse;font-size:.867em;width:100%}
 table.parse td,table.parse th{border-bottom:1px solid var(--line);padding:2px 6px;text-align:left}
 table.parse tr{cursor:pointer}
 .lex{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-top:10px}
 .hit{padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer}
-.sr-summary{color:var(--mut);font-size:13px;margin-bottom:4px}
+.sr-summary{color:var(--mut);font-size:.867em;margin-bottom:4px}
 .sr-filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
-.sr-filter{font-size:12px}
+.sr-filter{font-size:.8em}
 .sr-empty{padding:16px 8px;text-align:center}
 .sr-empty p{margin:4px 0}
 .hit b{background:var(--sel);color:inherit}
@@ -45,10 +45,10 @@ table.parse tr{cursor:pointer}
 .file{display:flex;gap:10px;align-items:center;padding:4px 0}
 .barfill{height:8px;background:var(--line);border-radius:4px;overflow:hidden;width:360px;display:inline-block;vertical-align:middle}
 #fill{height:100%;width:0;background:var(--acc)}
-.err{color:#c0392b}
+.err{color:var(--err,#c0392b)}
 
 .versbox{display:inline-block;vertical-align:top;position:relative}
-.versbox .vers{position:absolute;z-index:5;background:#fff;border:1px solid #bbb;padding:6px;max-height:320px;overflow:auto;width:340px}
+.versbox .vers{position:absolute;z-index:5;background:var(--bg,#fff);border:1px solid var(--line,#bbb);padding:6px;max-height:320px;overflow:auto;width:340px}
 .versbox .vers label{display:block;white-space:nowrap}
 .versbox .vers .g{font-weight:bold;margin-top:4px}
 #article-title{font-weight:bold}
@@ -108,6 +108,24 @@ table.items tr.hidden-row:hover{opacity:.8}
   .it-tiles{grid-template-columns:minmax(0,1fr)}
 }
 
+/* ---- 소논문 화면 ---- */
+#view-articles .cols{flex:1;display:flex;min-height:0}
+#articlelist{flex:0 0 38%;min-width:0}
+#articlebody.side{flex:1 1 auto;flex-basis:auto}
+#articlelist .hit{padding:8px 10px;border-radius:6px}
+#articlelist .hit:hover{background:var(--sel)}
+#articlelist .hit.sel{background:var(--sel)}
+#article-title{font-weight:700;font-size:1.2em;margin:0 0 12px;line-height:1.4}
+#articlebody .art-body{max-width:var(--body-maxw,46em)}
+#article-meta{font-size:.8em;color:var(--mut);margin:0 0 12px}
+#article-empty{color:var(--mut);padding:16px 8px}
+/* 좁은 화면: 목록과 본문을 위아래로(본문은 선택 후에만) */
+@media (max-width: 719px){
+  #view-articles .cols{flex-direction:column}
+  #articlelist{flex:none;max-height:40%;overflow:auto;border-bottom:1px solid var(--line)}
+  #articlebody.side{flex:1;border-left:none}
+}
+
 
 /* ---- 좁은 화면(720px 미만): 위쪽 바가 줄바꿈되어 넘치지 않고, 누르는 단추는 36px 이상 */
 @media (max-width: 719px) {
@@ -120,6 +138,6 @@ table.items tr.hidden-row:hover{opacity:.8}
   .bar select, .bar input { min-height: 32px; }
   #cite, #add-panel, #layout-save, #layout-load, #layout-default, #format-btn { min-height: 36px; }
   body { min-width: 0; }
-  .versbox .vers { width: 88vw; max-width: 340px; }
+  .versbox .vers { width: 88vw; max-width: 340px; right: 0; left: auto; }
   #goto { width: auto; }
 }

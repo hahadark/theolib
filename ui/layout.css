@@ -24,9 +24,9 @@
   background: var(--bg, #fff); flex: none;
 }
 .p-head:active { cursor: grabbing; }
-.p-kind { font-weight: 600; font-size: 12px; color: var(--acc, #264678); white-space: nowrap; }
-.p-res { flex: 1; font-size: 12px; color: var(--mut, #777); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.p-btn, .p-link { background: none; border: 1px solid var(--line, #ddd); border-radius: 4px; cursor: pointer; font-size: 12px; padding: 0 6px; color: var(--fg, #222); }
+.p-kind { font-weight: 600; font-size: .8em; color: var(--acc, #264678); white-space: nowrap; }
+.p-res { flex: 1; font-size: .8em; color: var(--mut, #777); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-btn, .p-link { background: none; border: 1px solid var(--line, #ddd); border-radius: 4px; cursor: pointer; font-size: .8em; padding: 0 6px; color: var(--fg, #222); }
 .p-link.on { background: var(--acc, #264678); color: #fff; border-color: var(--acc, #264678); }
 .p-body { flex: 1; overflow: auto; padding: 8px 12px; min-height: 0; }
 
@@ -37,7 +37,7 @@ body.p-dragging, body.p-dragging * { cursor: grabbing; }
 .p-pane.drop-edge { outline: 2px solid transparent; }
 .p-pane.drop-edge::before {
   content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
-  background: rgba(38,70,120,0.22); border-radius: 4px;
+  background: color-mix(in srgb, var(--acc, #264678) 22%, transparent); border-radius: 4px;
 }
 .p-pane.drop-edge-t::before { inset: 0 0 50% 0; }
 .p-pane.drop-edge-b::before { inset: 50% 0 0 0; }
@@ -69,9 +69,9 @@ body.p-dragging, body.p-dragging * { cursor: grabbing; }
 }
 
 /* ---- 테마 (format.js 가 html 요소에 클래스를 붙인다) */
-html.dark { --bg: #1c1c1e; --fg: #e8e8e8; --mut: #999; --line: #3a3a3c; --acc: #8fb4ee; --sel: #4a4220; }
-html.sepia { --bg: #f4ecd8; --fg: #5b4636; --mut: #8a7a68; --line: #ddd0b8; --acc: #8b5e3c; --sel: #ffe9b8; }
-html.light { --bg: #fbfaf7; --fg: #222; --mut: #777; --line: #ddd; --acc: #264678; --sel: #fff3c4; }
+html.dark { --bg: #1c1c1e; --fg: #e8e8e8; --mut: #999; --line: #3a3a3c; --acc: #8fb4ee; --sel: #4a4220; --err: #e06c75; }
+html.sepia { --bg: #f4ecd8; --fg: #5b4636; --mut: #8a7a68; --line: #ddd0b8; --acc: #8b5e3c; --sel: #ffe9b8; --err: #a4452c; }
+html.light { --bg: #fbfaf7; --fg: #222; --mut: #777; --line: #ddd; --acc: #264678; --sel: #fff3c4; --err: #c0392b; }
 mark { background: var(--hl, #ffe08a); }
 
 /* 글 폭·문단 간격 등을 글 본문에 적용 */
@@ -83,6 +83,21 @@ mark { background: var(--hl, #ffe08a); }
 /* 절마다 줄바꿈(거짓이면 절이 이어서 붙는다) */
 #panes.fmt-no-lb .vrow { display: inline; }
 #panes.fmt-no-lb .vrow .n { margin-right: 0.4em; }
+
+/* ---- 번역본 표시 방식: 위아래(기본) / 나란히 ---- */
+.vers-layout { display: flex; gap: 0; margin: 0 0 8px; flex-wrap: wrap; }
+.vers-layout button { font-size: .75em; padding: 1px 10px; border: 1px solid var(--line); background: none; color: var(--fg); cursor: pointer; }
+.vers-layout button:first-child { border-radius: 6px 0 0 6px; }
+.vers-layout button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+.vers-layout button.on { background: var(--acc); color: #fff; border-color: var(--acc); }
+/* 한 절 안의 여러 번역본을 세로로 쌓는다(기본). */
+.vrow .t .tline { display: block; }
+/* 나란히: 절 번호 오른쪽에 번역본들이 같은 높이의 칸으로 나란히 선다. */
+.vrow.side { display: flex; gap: 12px; align-items: flex-start; }
+.vrow.side .n { flex: none; }
+.vrow.side .t { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(var(--side-cols, 1), minmax(0, 1fr)); gap: 10px; }
+.vrow.side .t .tline { margin: 0; }
+.vrow.side .t .vn { display: block; font-size: 11px; color: var(--mut); margin: 0 0 1px; }
 
 /* 절 번호 모양 */
 .vnum.super { vertical-align: super; font-size: 0.7em; color: var(--mut, #777); line-height: 1; }
@@ -102,8 +117,8 @@ mark { background: var(--hl, #ffe08a); }
 .format-pop .fp-tabs button { border: 1px solid var(--line); background: none; color: var(--fg); border-radius: 4px; cursor: pointer; padding: 2px 8px; }
 .format-pop .fp-tabs button.on { background: var(--acc); color: #fff; border-color: var(--acc); }
 .format-pop .fp-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
-.format-pop .fp-row label { width: 76px; flex: none; color: var(--mut); font-size: 13px; }
+.format-pop .fp-row label { width: 76px; flex: none; color: var(--mut); font-size: .867em; }
 .format-pop .fp-row input, .format-pop .fp-row select { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
 .format-pop .fp-common { border-top: 1px solid var(--line); padding-top: 8px; margin-bottom: 8px; }
-.format-pop .fp-vn label { margin-right: 8px; font-size: 13px; }
+.format-pop .fp-vn label { margin-right: 8px; font-size: .867em; }
 .format-pop .fp-apply { margin-top: 8px; }
