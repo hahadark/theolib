@@ -3,6 +3,8 @@ node_modules/
 data/
 *.db
 *.db.gz
+# 앱에 내장하는 퍼블릭 도메인 기본 자료는 커밋한다.
+!src-tauri/resources/free/*
 .theolib-test/
 docs/*.png
 real-source/

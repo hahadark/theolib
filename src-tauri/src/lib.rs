@@ -1,7 +1,7 @@
 mod update;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use theolib_core::reader::{self, Reader};
 use theolib_core::{Home, html, search, source, user};
 
@@ -197,6 +197,78 @@ fn cancel_download() {
 #[tauri::command]
 fn free_url() -> String {
     std::env::var("THEOLIB_FREE_URL").unwrap_or_else(|_| "https://github.com/hahadark/theolib-free".into())
+}
+
+/// 앱 리소스에 내장한 기본 자료(저작권 만료) 선언 파일의 경로를 찾는다.
+/// 번들에서는 `resources/free/theolib.json`이 `<리소스 폴더>/free/theolib.json`에 풀린다.
+fn bundled_free_decl(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let dir = app.path().resource_dir().ok()?;
+    for cand in [dir.join("free/theolib.json"), dir.join("theolib.json")] {
+        if cand.exists() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
+/// 설치된 자료(묶음·항목)가 하나도 없는지.
+fn nothing_installed(home: &Home) -> bool {
+    match source::list_sources(home).first() {
+        None => true,
+        Some(st) => st.installed.is_empty() && st.items.is_empty(),
+    }
+}
+
+/// 내장 기본 자료(저작권 만료)를 기존 항목 설치 경로로 설치한다. 실패(파일 없음 등)는 조용히 무시한다.
+fn install_bundled_free(app: &AppHandle) {
+    let Ok(home) = Home::default_location() else { return };
+    if !nothing_installed(&home) {
+        return;
+    }
+    let Some(decl) = bundled_free_decl(app) else { return };
+    let path = decl.to_string_lossy().into_owned();
+    let a = app.clone();
+    let mut p = move |l: &str, d: u64, t: u64| {
+        let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
+    };
+    if source::add(&home, &path, None, &[], &mut p).is_ok() {
+        start_index(app.clone());
+    }
+}
+
+/// 내장 기본 자료를 지우고 다시 설치한다(자료 출처 화면의 [기본 자료 다시 설치]).
+#[tauri::command]
+async fn reinstall_free(app: AppHandle) -> R<()> {
+    let h = home()?;
+    let a = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> R<()> {
+        // 내장 기본 자료 묶음만 지운다(다른 출처는 건드리지 않음).
+        for pack in ["bible-free", "orig-free"] {
+            let _ = source::remove_pack(&h, pack);
+        }
+        let Some(decl) = bundled_free_decl(&app) else { return Err("내장 기본 자료를 찾을 수 없습니다.".into()) };
+        let path = decl.to_string_lossy().into_owned();
+        let mut p = move |l: &str, d: u64, t: u64| {
+            let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
+        };
+        source::add(&h, &path, None, &[], &mut p).map_err(e)?;
+        start_index(app.clone());
+        Ok(())
+    })
+    .await
+    .map_err(e)??;
+    Ok(())
+}
+
+/// 내장 기본 자료가 설치되어 있는지 여부와 출처 제목.
+#[tauri::command]
+fn free_status() -> R<serde_json::Value> {
+    let h = home()?;
+    let installed = match source::list_sources(&h).first() {
+        None => false,
+        Some(st) => st.installed.iter().any(|i| i == "bible-free" || i == "orig-free"),
+    };
+    Ok(serde_json::json!({ "installed": installed }))
 }
 
 #[tauri::command]
@@ -444,6 +516,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             update::spawn_auto(app.handle().clone());
+            // 처음 실행 때(설치된 자료가 없으면) 내장 기본 자료(저작권 만료)를 자동 설치한다.
+            let h = app.handle().clone();
+            std::thread::spawn(move || install_bundled_free(&h));
             Ok(())
         });
     #[cfg(feature = "selftest")]
@@ -455,12 +530,12 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, selftest_report
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, selftest_report
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");

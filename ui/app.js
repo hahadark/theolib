@@ -56,6 +56,13 @@ async function loadSources() {
   const box = $('#srclist');
   box.innerHTML = list.length ? '' : '<p class="muted">설치된 출처가 없습니다.</p>';
   $('#firstrun').hidden = list.length > 0;
+  // 내장 기본 자료(저작권 만료) 설치 상태
+  try {
+    const fs = await invoke('free_status');
+    const fsbox = $('#freestatus');
+    fsbox.hidden = !fs.installed;
+    if (fs.installed) $('#freestatus-label').textContent = '기본 자료(저작권 만료) 설치됨';
+  } catch (_) { $('#freestatus').hidden = true; }
   for (const s of list) {
     const d = document.createElement('div');
     d.className = 'note';
@@ -136,6 +143,13 @@ async function previewUrl(url) {
 }
 $('#srccheck').onclick = () => run(async () => { const url = $('#srcurl').value.trim(); if (url) await previewUrl(url); });
 $('#freebtn').onclick = () => run(async () => { state.freeUrl = await invoke('free_url'); await previewUrl(state.freeUrl); });
+$('#free-reinstall').onclick = () => run(async () => {
+  $('#progress').hidden = false;
+  msg('기본 자료를 다시 설치하는 중…');
+  await invoke('reinstall_free');
+  msg('기본 자료를 다시 설치했습니다.');
+  await boot(); await loadSources();
+});
 $('#cancel').onclick = () => invoke('cancel_download');
 
 // ---- 파일로 추가(자료 파일 .bdb .sdb .dct .cdb): 같은 항목 목록 화면, 출처 "내 파일"
