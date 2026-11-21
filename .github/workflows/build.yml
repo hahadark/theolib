@@ -23,8 +23,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Tauri CLI 설치
-        run: cargo install tauri-cli --locked --version ^2
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+
+      - name: Tauri CLI 설치 (미리 빌드된 실행 파일)
+        run: cargo binstall tauri-cli --version ^2 --no-confirm --locked
 
       - name: 빌드 (NSIS 설치본)
         run: cargo tauri build --bundles nsis
@@ -51,8 +57,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Tauri CLI 설치
-        run: cargo install tauri-cli --locked --version ^2
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+
+      - name: Tauri CLI 설치 (미리 빌드된 실행 파일)
+        run: cargo binstall tauri-cli --version ^2 --no-confirm --locked
 
       - name: 빌드 (.app 번들)
         run: cargo tauri build --bundles app
