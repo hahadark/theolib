@@ -541,7 +541,7 @@ fn items_full_all_timing() {
     assert_eq!(b.len(), 56);
     // 주석 1종 삭제 → 검색에서 빠짐
     let charis: Vec<String> = ids.iter().filter(|i| i.starts_with("comm:카리스종합주석:")).cloned().collect();
-    assert_eq!(charis.len(), 33);
+    assert_eq!(charis.len(), 35); // 카리스 1~7·11·40~66장 = 35개
     source::remove_items(&home, &charis).unwrap();
     search::build_index(&home, &mut |_, _, _| {}).unwrap();
     let c = search::search(&home, "뉴산토스", "comm", &[], 20).unwrap();
@@ -565,10 +565,10 @@ fn comm_split_books_merge() {
     let (acts, rom, g1) = (by("comm:카리스종합주석:44"), by("comm:카리스종합주석:45"), by("comm:카리스종합주석:1"));
     // 선언 구조: 카리스 33책, 매튜헨리 66책, 책별 칸
     let n_of = |sid: &str| all.iter().filter(|f| f["series"] == sid).count();
-    assert_eq!((n_of("카리스종합주석"), n_of("매튜헨리")), (33, 66));
+    assert_eq!((n_of("카리스종합주석"), n_of("매튜헨리")), (35, 66));
     assert!(acts["series_bytes"].as_u64().unwrap() > 80_000_000 && acts["book"] == "사도행전" && acts["bk"] == 44 && acts["default"] == true);
     let sizes: Vec<u64> = all.iter().filter(|f| f["series"] == "카리스종합주석").map(|f| f["bytes"].as_u64().unwrap()).collect();
-    println!("카리스 책별 항목 33개, 크기 {}~{} 바이트, 합 {}", sizes.iter().min().unwrap(), sizes.iter().max().unwrap(), sizes.iter().sum::<u64>());
+    println!("카리스 책별 항목 35개, 크기 {}~{} 바이트, 합 {}", sizes.iter().min().unwrap(), sizes.iter().max().unwrap(), sizes.iter().sum::<u64>());
     for f in [&acts, &rom, &g1] {
         let u = f["url"].as_str().unwrap();
         std::fs::copy(dir.join(u), srv.join(u)).unwrap();
@@ -590,7 +590,7 @@ fn comm_split_books_merge() {
     let ss = r.comm_series().unwrap();
     assert_eq!(ss.len(), 1);
     assert_eq!(ss[0].id, "카리스종합주석");
-    assert_eq!(ss[0].books.len(), 33);
+    assert_eq!(ss[0].books.len(), 35);
     assert_eq!(ss[0].have, vec![44]);
     assert!(ss[0].books.contains(&45) && ss[0].books.contains(&1));
     let c = search::search(&home, "총독", "comm", &[], 50).unwrap();
