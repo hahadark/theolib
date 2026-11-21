@@ -11,7 +11,8 @@
   // ---- 패널 종류별 메타 + 기본 설정
   const PANEL_META = {
     body: { name: '본문', defaultSettings: { vers: [] } },
-    comm: { name: '주석', defaultSettings: { series: null } },
+    // series: 이 패널이 보는 주석 시리즈. chapview: 장 전체를 절 순서로 나열(기본). multi: 여러 시리즈를 이어 보기.
+    comm: { name: '주석', defaultSettings: { series: null, chapview: true, multi: false } },
     parse: { name: '원전 분해', defaultSettings: {} },
     lex: { name: '사전', defaultSettings: {} },
     search: { name: '검색', defaultSettings: {} },
@@ -83,7 +84,8 @@
     constructor(id, kind, settings) {
       this.id = id;
       this.kind = kind;
-      this.settings = JSON.parse(JSON.stringify(settings || PANEL_META[kind].defaultSettings || {}));
+      // 기본 설정을 먼저 깔고 저장된 값을 덮어쓴다(예전 배치에 없던 chapview·multi 도 기본값을 갖는다).
+      this.settings = Object.assign({}, JSON.parse(JSON.stringify(PANEL_META[kind].defaultSettings || {})), JSON.parse(JSON.stringify(settings || {})));
       this.linked = true; // 구절 연동 고리
       this.ref = null;    // 연동 끊겼을 때 고정할 {bk,ch,v}
       this.el = null; this.head = null; this.body = null; this.resEl = null; this.linkBtn = null;

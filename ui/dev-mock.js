@@ -8,7 +8,7 @@
 
   const BOOKS = [
     { n: 1, name: '창세기', abbr: '창', en: 'Genesis', ch: 3, alias: [] },
-    { n: 44, name: '사도행전', abbr: '행', en: 'Acts', ch: 2, alias: [] },
+    { n: 44, name: '사도행전', abbr: '행', en: 'Acts', ch: 26, alias: [] },
   ];
 
   const VERSIONS = [
@@ -18,10 +18,11 @@
     { id: 'parse', name: '원전 분해', grp: '원어', ord: 4, desc: '시험용', kind: 'parse', file: 'orig' },
   ];
 
-  const VERSES = { 1: ['시험 본문 1절', '시험 본문 2절', '시험 본문 3절'], 44: ['시험 본문 24장 1절', '시험 본문 24장 2절'] };
+  const VERSES = { 1: ['시험 본문 1절', '시험 본문 2절', '시험 본문 3절'] };
 
   function textsFor(bk, ch, vers) {
-    const v = VERSES[bk] || ['시험 본문'];
+    // 사도행전은 장별로 26절까지 지어낸 본문을 만든다(장 전체 주석 시험용).
+    const v = bk === 44 ? Array.from({ length: 26 }, (_, i) => `시험 본문 ${ch}장 ${i + 1}절`) : (VERSES[bk] || ['시험 본문']);
     return v.map((txt, i) => ({
       v: i + 1,
       texts: vers.map((ver) => ({ ver, html: txt + ' <span class="mock">' + ver + '</span>' })),
@@ -31,11 +32,16 @@
   // 주석 가짜 데이터: 장 전체 개요 1개 + 절범위 1개 + 단일절 1개를 섞었다.
   // start_key·end_key 는 장*1000+절.
   const NOTES = [
-    { id: 1, comm: 'karis', comm_name: '카리스종합주석', kind: '강해', title: '행 24장 전체 흐름', ref: '24장', fmt: 'text', html: '시험용 장 개요. 지어낸 짧은 문장입니다.', start_key: 24000, end_key: 24999, ch1: 24, ch2: 24 },
-    { id: 2, comm: 'karis', comm_name: '카리스종합주석', kind: '주해', title: '바울의 변론', ref: '행 24:10-21', fmt: 'text', html: '시험용 절범위 해설. 짧은 설명입니다.', start_key: 24010, end_key: 24021, ch1: 24, ch2: 24 },
-    { id: 3, comm: 'karis', comm_name: '카리스종합주석', kind: '원어', title: '고개를 끄덕이는', ref: '행 24:10', fmt: 'text', html: '시험용 단일절 해설. <a class="sc" data-c="G5012">G5012</a> 같은 낱말.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
-    { id: 4, comm: 'ivp', comm_name: 'IVP 성경주석', kind: '주해', title: '시험 주석 2', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 둘째.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
-    { id: 5, comm: 'esv', comm_name: 'ESV 주석', kind: '주해', title: '시험 주석 3', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 셋째.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
+    // 24장: 장 전체 개요 · 절범위 · 단일절을 같은 절(10절)에 섞었다. start_key·end_key 는 장*1000+절.
+    { id: 1, comm: 'karis', comm_name: '카리스종합주석', kind: '강해', title: '24장 전체 흐름', ref: '24장', fmt: 'text', html: '시험용 장 전체 개요. 지어낸 짧은 문장입니다.', start_key: 24000, end_key: 24999, ch1: 24, ch2: 24 },
+    { id: 2, comm: 'karis', comm_name: '카리스종합주석', kind: '주해', title: '앞부분 해설', ref: '행 24:1-9', fmt: 'text', html: '시험용 1-9절 해설. 짧은 문장입니다.', start_key: 24001, end_key: 24009, ch1: 24, ch2: 24 },
+    { id: 3, comm: 'karis', comm_name: '카리스종합주석', kind: '원어', title: '고개를 끄덕이는', ref: '행 24:10', fmt: 'text', html: '시험용 10절 단일절 해설. <a class="sc" data-c="G5012">G5012</a> 같은 낱말.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
+    { id: 4, comm: 'karis', comm_name: '카리스종합주석', kind: '주해', title: '변론의 흐름', ref: '행 24:10-21', fmt: 'text', html: '시험용 10-21절 해설. 지어낸 문장입니다.', start_key: 24010, end_key: 24021, ch1: 24, ch2: 24 },
+    { id: 5, comm: 'karis', comm_name: '카리스종합주석', kind: '주해', title: '가운데 대목', ref: '행 24:11-13', fmt: 'text', html: '시험용 11-13절 해설. 짧습니다.', start_key: 24011, end_key: 24013, ch1: 24, ch2: 24 },
+    { id: 6, comm: 'karis', comm_name: '카리스종합주석', kind: '주해', title: '뒷부분 해설', ref: '행 24:22-26', fmt: 'text', html: '시험용 22-26절 해설. 지어낸 문장입니다.', start_key: 24022, end_key: 24026, ch1: 24, ch2: 24 },
+    { id: 7, comm: 'ivp', comm_name: 'IVP 성경주석', kind: '주해', title: '시험 주석 둘째 시리즈', ref: '행 24:9-12', fmt: 'text', html: '시험 주석 본문 둘째 시리즈.', start_key: 24009, end_key: 24012, ch1: 24, ch2: 24 },
+    { id: 8, comm: 'ivp', comm_name: 'IVP 성경주석', kind: '주해', title: '시험 주석 단일절', ref: '행 24:15', fmt: 'text', html: '시험 주석 15절.', start_key: 24015, end_key: 24015, ch1: 24, ch2: 24 },
+    { id: 9, comm: 'esv', comm_name: 'ESV 주석', kind: '주해', title: '시험 주석 셋째 시리즈', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 셋째 시리즈.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
   ];
 
   const PARSE = [
@@ -162,7 +168,13 @@
       case 'books': r = BOOKS; break;
       case 'versions': r = VERSIONS; break;
       case 'chapter': r = textsFor(args.bk, args.ch, args.vers || []); break;
-      case 'notes': r = NOTES; break;
+      case 'notes': {
+        // 실제 코어와 같게: v 가 없으면 장 전체, 있으면 그 절을 포함하는 해설만.
+        const ch = args.ch || 24;
+        if (args.v == null) { const lo = ch * 1000, hi = lo + 999; r = NOTES.filter((n) => n.start_key <= hi && n.end_key >= lo).map((n) => ({ ...n })); }
+        else { const k = args.ch * 1000 + args.v; r = NOTES.filter((n) => n.start_key <= k && n.end_key >= k).map((n) => ({ ...n })); }
+        break;
+      }
       case 'parse': r = PARSE; break;
       case 'lex': r = LEX[args.code] || []; break;
       case 'search_text': r = [{ area: 'bible', src: '개역개정', bk: 44, ch: 24, v: 10, ref_: '행 24:10', note_id: 0, snippet: '시험 [본문] 검색 결과' }]; break;

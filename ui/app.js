@@ -297,6 +297,10 @@ async function loadRows(vers) {
 async function loadNotes(bk, ch, v) {
   return invoke('notes', { bk, ch, v }).catch(() => []);
 }
+// 장 전체 주석(코어는 v 가 없으면 그 장 전체를 절 순서대로 돌려준다)
+async function loadNotesChapter(bk, ch) {
+  return invoke('notes', { bk, ch }).catch(() => []);
+}
 async function loadParse(bk, ch, v) {
   return invoke('parse', { bk, ch, v }).catch(() => []);
 }
@@ -379,12 +383,76 @@ function commLayers(notes, ref, chapview) {
   return { rep: rep ? rep.n : null, others: rest.filter((x) => !x.overview).map((x) => x.n), overviews: rest.filter((x) => x.overview).map((x) => x.n) };
 }
 
+// 주석 항목의 절 범위 표시("24:10", "24:11-13", "24장 전체"). start_key = 장*1000+절.
+function noteRange(n) {
+  const sk = Number.isFinite(n.start_key) ? n.start_key : null;
+  if (sk == null) return String(n.ref || '');
+  const ek = Number.isFinite(n.end_key) ? n.end_key : sk;
+  const c1 = Math.floor(sk / 1000), v1 = sk % 1000;
+  const c2 = Math.floor(ek / 1000), v2 = ek % 1000;
+  if (sk === ek) return v1 ? `${c1}:${v1}` : `${c1}장`;
+  if (!v1 && v2 === 999) return `${c1}장 전체`;
+  const head = v1 ? `${c1}:${v1}` : `${c1}장`;
+  if (c1 !== c2) return `${head}-${v2 ? `${c2}:${v2}` : `${c2}장`}`;
+  return `${head}-${v2 === 999 ? '끝' : v2}`;
+}
+
+// 절 순서(시작 절 → 끝 절 → 원래 차례)로 정렬한다.
+function inVerseOrder(list) {
+  return list
+    .map((n, i) => ({ n, i, sk: Number.isFinite(n.start_key) ? n.start_key : Infinity, ek: Number.isFinite(n.end_key) ? n.end_key : Infinity }))
+    .sort((a, b) => a.sk - b.sk || a.ek - b.ek || a.i - b.i)
+    .map((x) => x.n);
+}
+
+// 장 전체 보기 한 항목: 머리에 절 범위, 단일절 해설은 그 절의 앵커를 단다.
+function commItemHtml(n) {
+  const sk = Number.isFinite(n.start_key) ? n.start_key : null;
+  const ek = Number.isFinite(n.end_key) ? n.end_key : sk;
+  const single = sk != null && ek === sk && sk % 1000 > 0;
+  const anchor = single ? ` data-anchor="${sk % 1000}" id="comm-v-${sk % 1000}"` : '';
+  return `<div class="note cnote" data-sk="${sk == null ? '' : sk}" data-ek="${ek == null ? '' : ek}"${anchor}>` +
+    `<h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)}</h4><div>${n.html}</div></div>`;
+}
+
+// 선택한 절의 해설 위치로 스크롤하고 잠깐 강조한다(패널 다시 그리지 않음).
+function commScroll(panel, ref) {
+  const box = panel.body;
+  const list = box.querySelector('.comm-list');
+  if (!list) return;
+  if (ref.v == null) { box.scrollTop = 0; return; }
+  const key = ref.ch * 1000 + ref.v;
+  const items = [...list.querySelectorAll('.cnote')];
+  const sk = (x) => Number(x.dataset.sk), ek = (x) => Number(x.dataset.ek);
+  // 정확히 그 절에서 시작하는 항목 → 그 절을 포함하는 항목(가장 가까이 시작한 것) 순서로 찾는다.
+  const exact = items.find((x) => sk(x) === key);
+  const cover = items.filter((x) => sk(x) <= key && ek(x) >= key).sort((a, b) => sk(b) - sk(a) || ek(a) - ek(b));
+  const target = exact || cover[0];
+  if (!target) return;
+  target.scrollIntoView({ block: 'start' });
+  list.querySelectorAll('.cnote.hl').forEach((x) => x.classList.remove('hl')); // 앞서 켜 둔 강조는 끈다
+  target.classList.add('hl');
+  clearTimeout(panel._hlT);
+  panel._hlT = setTimeout(() => target.classList.remove('hl'), 1600);
+}
+
+// 지금 화면에 그려 둔 내용이 그대로 쓸 수 있는지 판단하는 빠른 키(구절만 바뀌면 스크롤만 한다).
+function commQuickKey(panel, ref) {
+  const whole = panel.settings.chapview !== false;
+  return [ref.bk, ref.ch, whole ? 'chap' : 'v' + (ref.v == null ? '' : ref.v), panel.settings.multi === true ? 'multi' : 'one', panel.settings.series || ''].join('|');
+}
+
 function renderComm(panel) {
   const ref = panelRef(panel);
   const el = panel.body;
+  const whole = panel.settings.chapview !== false; // 장 전체 모드가 기본
+  // 이미 같은 장·같은 시리즈로 그려 두었으면 다시 그리지 않고 그 절로만 스크롤한다.
+  const qk = commQuickKey(panel, ref);
+  if (panel._commQk === qk && el.querySelector('.comm-wrap')) { if (whole) commScroll(panel, ref); return; }
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
-  cached(loadNotes, ref.bk, ref.ch, ref.v).then((notes) => {
+  (whole ? cached(loadNotesChapter, ref.bk, ref.ch) : cached(loadNotes, ref.bk, ref.ch, ref.v)).then((notes) => {
     if (panel !== panelByIdLive(panel.id)) return;
+    if (commQuickKey(panel, panelRef(panel)) !== qk) return; // 그 사이 설정이 바뀌었으면 버린다
     // 이름 → 주석 코드 매핑 후, 숨긴 시리즈(코드 기준)를 걸러낸다.
     const commCode = new Map();
     for (const n of notes) if (!commCode.has(n.comm_name)) commCode.set(n.comm_name, n.comm);
@@ -392,19 +460,50 @@ function renderComm(panel) {
     let cur = panel.settings.series;
     if (!comms.includes(cur)) cur = comms[0] || null;
     panel.settings.series = cur; panel.saveSettings();
-    const tabs = comms.length ? comms.map((c) => `<button class="${c === cur ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('') : '';
-    const mine = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm));
-    const chapview = panel.settings.chapview === true || ref.v == null;
-    const { rep, others, overviews } = commLayers(mine, ref, chapview);
-    let body = rep ? noteHtml(rep) : '';
-    if (others.length) body += `<details class="note-more"><summary>이 절을 포함한 다른 해설 ${others.length}개</summary>${others.map(noteHtml).join('')}</details>`;
-    if (overviews.length) body += `<details class="note-more"><summary>여러 장에 걸친 큰 단락 개요 ${overviews.length}개</summary>${overviews.map(noteHtml).join('')}</details>`;
-    if (!body) body = '<span class="muted">이 자리의 주석이 없습니다.</span>';
-    el.innerHTML = tabs ? `<div class="subtabs">${tabs}</div><div class="notes">${body}</div>` : `<div class="notes">${body}</div>`;
-    const tb = el.querySelector('.subtabs');
-    if (tb) tb.onclick = (ev) => { const b = ev.target.closest('button'); if (b) { panel.settings.series = b.dataset.c; panel.saveSettings(); Layout.refreshPanelMeta(panel.id); renderComm(panel); } };
+    const multi = panel.settings.multi === true && comms.length > 1;
+    const seriesRows = (multi ? comms : [cur]).filter(Boolean);
+    const tabs = comms.map((c) => `<button class="${!multi && c === cur ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('') +
+      (whole && comms.length > 1 ? `<button class="${multi ? 'on' : ''}" data-multi="1" title="모든 주석을 절 순서대로 이어서 보기">이어 보기</button>` : '');
+    const cvBtn = (m, label) => `<button data-cv="${m}" class="${(whole ? m === 'chap' : m === 'verse') ? 'on' : ''}">${label}</button>`;
+    const top = `<div class="comm-top"><div class="subtabs">${tabs}</div><div class="cv">${cvBtn('verse', '절')}${cvBtn('chap', '장 전체')}</div></div>`;
+    let body = '';
+    if (whole) {
+      // 장 전체를 절 순서대로 그대로 다 보여준다(접지 않는다). 여러 시리즈면 시리즈마다 이어서.
+      body = seriesRows.map((name) => {
+        const items = inVerseOrder(notes.filter((n) => n.comm_name === name && !isHidden('s:' + n.comm)));
+        const head = multi ? `<div class="csec">${esc(name)}</div>` : '';
+        return head + (items.length ? items.map(commItemHtml).join('') : '<p class="muted">이 장의 주석이 없습니다.</p>');
+      }).join('');
+    } else {
+      const mine = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm));
+      const { rep, others, overviews } = commLayers(mine, ref, ref.v == null);
+      body = rep ? noteHtml(rep) : '';
+      if (others.length) body += `<details class="note-more"><summary>이 절을 포함한 다른 해설 ${others.length}개</summary>${others.map(noteHtml).join('')}</details>`;
+      if (overviews.length) body += `<details class="note-more"><summary>여러 장에 걸친 큰 단락 개요 ${overviews.length}개</summary>${overviews.map(noteHtml).join('')}</details>`;
+      if (!body) body = '<span class="muted">이 자리의 주석이 없습니다.</span>';
+    }
+    if (!body) body = '<p class="muted">이 장의 주석이 없습니다.</p>';
+    el.innerHTML = `<div class="comm-wrap">${top}<div class="notes${whole ? ' comm-list' : ''}">${body}</div></div>`;
+    el.querySelector('.comm-top').onclick = (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (b.dataset.cv) {
+        const want = b.dataset.cv === 'chap';
+        if ((panel.settings.chapview !== false) === want) return;
+        panel.settings.chapview = want; panel.saveSettings(); panel._commQk = null;
+        renderComm(panel);
+      } else if (b.dataset.multi) {
+        panel.settings.multi = panel.settings.multi !== true; panel.saveSettings(); panel._commQk = null;
+        renderComm(panel);
+      } else if (b.dataset.c) {
+        panel.settings.series = b.dataset.c; panel.saveSettings(); panel._commQk = null;
+        Layout.refreshPanelMeta(panel.id); renderComm(panel);
+      }
+    };
     el.querySelector('.notes').onclick = (ev) => { const a = ev.target.closest('a.sc'); if (a) showLex(a.dataset.c, panel); };
+    panel._commQk = qk;
     Layout.refreshPanelMeta(panel.id);
+    if (whole) requestAnimationFrame(() => commScroll(panel, panelRef(panel)));
   }).catch((x) => { el.innerHTML = `<p class="err">${esc(x)}</p>`; });
 }
 
@@ -850,6 +949,25 @@ async function openArticle(id, title) {
   const body = await invoke('article_body', { id }).catch((x) => `<p class="err">${esc(x)}</p>`);
   $('#articlebody').innerHTML = `<div id="article-title">${esc(title || '')}</div>${body}`;
 }
+
+
+// ---- 주석 패널의 '장 전체' 보기에만 쓰는 작은 스타일(화면 파일 하나로 끝내려고 여기서 넣는다)
+(function injectCommStyle() {
+  const st = document.createElement('style');
+  st.textContent = [
+    '.comm-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}',
+    '.comm-top .subtabs{flex:1;margin:0}',
+    '.comm-top .cv{display:flex;flex:none}',
+    '.comm-top .cv button{font-size:12px;padding:1px 8px;border-radius:0}',
+    '.comm-top .cv button:first-child{border-radius:6px 0 0 6px}',
+    '.comm-top .cv button:last-child{border-radius:0 6px 6px 0;border-left:none}',
+    '.cnote{scroll-margin-top:6px}',
+    '.cnote .cr{display:inline-block;font-size:12px;color:var(--acc);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-right:6px}',
+    '.cnote.hl{background:var(--sel);border-radius:6px;transition:background .3s}',
+    '.csec{font-weight:600;color:var(--acc);margin:10px 0 2px;padding-top:6px;border-top:1px solid var(--line)}',
+  ].join('\n');
+  document.head.appendChild(st);
+})();
 
 // ---- 초기화
 attachPanelEvents();
