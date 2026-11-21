@@ -40,3 +40,10 @@ table.parse tr{cursor:pointer}
 .barfill{height:8px;background:var(--line);border-radius:4px;overflow:hidden;width:360px;display:inline-block;vertical-align:middle}
 #fill{height:100%;width:0;background:var(--acc)}
 .err{color:#c0392b}
+
+.versbox{display:inline-block;vertical-align:top;position:relative}
+.versbox .vers{position:absolute;z-index:5;background:#fff;border:1px solid #bbb;padding:6px;max-height:320px;overflow:auto;width:340px}
+.versbox .vers label{display:block;white-space:nowrap}
+.versbox .vers .g{font-weight:bold;margin-top:4px}
+#article-title{font-weight:bold}
+progress{width:260px}

@@ -2,7 +2,7 @@
 //! 허용: 서식 태그, class, `data-c`(원어 번호), 색상만 있는 style. 나머지는 제거.
 
 const ALLOWED: &[&str] = &[
-    "a", "b", "i", "u", "em", "strong", "br", "p", "div", "span", "sup", "sub", "small", "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "table", "thead", "tbody", "tr", "td", "th", "hr", "ruby", "rt",
+    "a", "b", "i", "u", "em", "strong", "br", "p", "div", "span", "sup", "sub", "small", "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "table", "thead", "tbody", "tr", "td", "th", "hr", "ruby", "rt", "font",
 ];
 const DROP_WITH_CONTENT: &[&str] = &["script", "style", "iframe", "object", "embed", "template", "noscript"];
 
@@ -111,6 +111,7 @@ pub fn sanitize(html: &str) -> String {
         for (k, v) in attrs(&body[name_end..]) {
             match k.as_str() {
                 "class" if safe_class(&v) => tag.push_str(&format!(" class=\"{v}\"")),
+                "color" if name == "font" && v.starts_with('#') && matches!(v.len(), 4 | 7) && v[1..].chars().all(|x| x.is_ascii_hexdigit()) => tag.push_str(&format!(" color=\"{}\"", v.to_lowercase())),
                 "data-c" if safe_code(&v) => tag.push_str(&format!(" data-c=\"{v}\"")),
                 "style" => {
                     if let Some(s) = safe_style(&v) {

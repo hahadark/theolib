@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use theolib_core::reader::{Reader, code_tokens, strip_tags};
 use theolib_core::{Home, search, source};
@@ -6,27 +6,26 @@ use theolib_core::{Home, search, source};
 #[derive(Parser)]
 #[command(name = "theolib", about = "신학 서재 명령줄 도구")]
 struct Cli {
-    /// 출처 id (하나뿐이면 생략)
-    #[arg(long, global = true)]
-    source: Option<String>,
     #[command(subcommand)]
     cmd: Cmd,
 }
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// 출처 관리: add <주소> [--files bible,orig] | list | remove <id>
+    /// 출처 관리: add <주소> [--files bible-ko,orig,comm] | list | remove
     Source {
         #[command(subcommand)]
         c: Src,
     },
     /// 바뀐 파일만 다시 받는다
     Sync,
+    /// 검색 색인을 (다시) 만든다
+    Index,
     Chapter { bk: String, ch: i64, #[arg(long, default_value = "개역개정")] ver: String },
     Comm { bk: String, at: String },
     Parse { bk: String, at: String },
     Lex { code: String },
-    Search { q: String, #[arg(long = "in", default_value = "bible")] area: String, #[arg(long, default_value_t = 20)] limit: usize },
+    Search { q: String, #[arg(long = "in", default_value = "bible")] area: String, #[arg(long, default_value = "개역개정")] ver: String, #[arg(long, default_value_t = 20)] limit: usize },
     Stats,
 }
 
@@ -34,19 +33,7 @@ enum Cmd {
 enum Src {
     Add { url: String, #[arg(long, value_delimiter = ',')] files: Option<Vec<String>> },
     List,
-    Remove { id: String },
-}
-
-fn pick_source(home: &Home, want: &Option<String>) -> Result<String> {
-    if let Some(s) = want {
-        return Ok(s.clone());
-    }
-    let l = source::list_sources(home);
-    match l.len() {
-        1 => Ok(l[0].decl.id.clone()),
-        0 => bail!("출처가 없습니다. `theolib source add <주소>`로 추가하세요"),
-        _ => bail!("출처가 여러 개입니다. --source <id>를 지정하세요"),
-    }
+    Remove,
 }
 
 fn split_at(s: &str) -> Result<(i64, Option<i64>)> {
@@ -57,13 +44,13 @@ fn split_at(s: &str) -> Result<(i64, Option<i64>)> {
 }
 
 fn progress() -> impl FnMut(&str, u64, u64) {
-    let mut last = 0u64;
-    move |id, done, total| {
+    let mut last = (String::new(), 101u64);
+    move |label, done, total| {
         let pct = if total > 0 { done * 100 / total } else { 0 };
-        if pct / 20 != last / 20 || done == total {
-            eprintln!("  {id}: {pct}% ({done}/{total} 바이트)");
+        if last.0 != label || pct / 10 != last.1 / 10 {
+            eprintln!("  {label}: {pct}% ({done}/{total})");
+            last = (label.to_string(), pct);
         }
-        last = pct;
     }
 }
 
@@ -74,26 +61,32 @@ fn main() -> Result<()> {
         Cmd::Source { c: Src::Add { url, files } } => {
             let mut p = progress();
             let st = source::add(&home, &url, files.as_deref(), &mut p)?;
-            println!("출처 추가: {} ({}), 받은 파일: {}", st.decl.title, st.decl.id, st.installed.join(", "));
+            println!("출처 추가: 받은 파일: {}", st.installed.join(", "));
+            search::build_index(&home, &mut p)?;
+            println!("검색 색인 완료");
         }
         Cmd::Source { c: Src::List } => {
             for s in source::list_sources(&home) {
-                println!("{}\t{}\t설치: {}\t전체: {}", s.decl.id, s.decl.title, s.installed.join(","), s.decl.files.iter().map(|f| format!("{}({}B)", f.id, f.bytes)).collect::<Vec<_>>().join(","));
+                println!("설치: {}\n전체: {}", s.installed.join(","), s.decl.files.iter().map(|f| format!("{}({}B)", f.id, f.bytes)).collect::<Vec<_>>().join(","));
             }
         }
-        Cmd::Source { c: Src::Remove { id } } => {
-            source::remove(&home, &id)?;
-            println!("지웠습니다: {id}");
+        Cmd::Source { c: Src::Remove } => {
+            source::remove(&home)?;
+            println!("지웠습니다");
         }
         Cmd::Sync => {
-            let sid = pick_source(&home, &cli.source)?;
             let mut p = progress();
-            let u = source::sync(&home, &sid, &mut p)?;
+            let u = source::sync(&home, &mut p)?;
             println!("갱신한 파일: {}", if u.is_empty() { "없음".into() } else { u.join(", ") });
+            search::build_index(&home, &mut p)?;
+        }
+        Cmd::Index => {
+            let mut p = progress();
+            search::build_index(&home, &mut p)?;
+            println!("검색 색인 완료");
         }
         cmd => {
-            let sid = pick_source(&home, &cli.source)?;
-            let r = Reader::open(&home, &sid)?;
+            let r = Reader::open(&home)?;
             match cmd {
                 Cmd::Chapter { bk, ch, ver } => {
                     let b = r.resolve_book(&bk)?;
@@ -123,7 +116,7 @@ fn main() -> Result<()> {
                     let b = r.resolve_book(&bk)?;
                     let (ch, v) = split_at(&at)?;
                     for w in r.parse(b, ch, v.unwrap_or(1))? {
-                        println!("{}\t{}\t{}\t{}\t{}\t{}", w.i, w.w, w.code, w.lemma, w.parse, w.gloss);
+                        println!("{}\t{}\t{}\t{}\t{}\t{}\t{}", w.i, w.w, w.code, w.lemma, w.tr, w.parse, w.gloss);
                     }
                 }
                 Cmd::Lex { code } => {
@@ -132,9 +125,10 @@ fn main() -> Result<()> {
                         println!("[{}] {} {}: {}", e.dict, e.code, e.head, t.replace('\n', " "));
                     }
                 }
-                Cmd::Search { q, area, limit } => {
-                    for h in search::search(&home, &sid, &q, &area, limit)? {
-                        println!("{}\t{} {}:{}\t{}", h.src, h.bk, h.ch, h.v, h.snippet.replace('\n', " "));
+                Cmd::Search { q, area, ver, limit } => {
+                    let vers: Vec<String> = ver.split(',').map(|s| s.to_string()).collect();
+                    for h in search::search(&home, &q, &area, &vers, limit)? {
+                        println!("{}\t{} {}:{}\t{}\t{}", h.src, h.bk, h.ch, h.v, h.ref_, h.snippet.replace('\n', " "));
                     }
                 }
                 Cmd::Stats => {

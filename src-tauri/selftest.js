@@ -11,10 +11,11 @@
     q('#srcurl').value = window.__SELFTEST_URL;
     q('#srccheck').click();
     out.push('미리보기 파일 수=' + (await until(() => q('#srcpreview input[type=checkbox]')) ? document.querySelectorAll('#srcpreview input[type=checkbox]').length : 'timeout'));
-    out.push('미리보기 제목=' + (q('#srcpreview b') || {}).textContent);
+    out.push('미리보기 출처=' + (q('#srcpreview b') || {}).textContent);
     [...document.querySelectorAll('#srcpreview button')].find((b) => b.textContent === '받기').click();
-    out.push('설치 완료=' + (await until(() => /완료/.test(q('#srcmsg').textContent))) + ' 메시지=' + q('#srcmsg').textContent);
+    out.push('설치 완료=' + (await until(() => /받기를 마쳤습니다/.test(q('#srcmsg').textContent), 120000)) + ' 메시지=' + q('#srcmsg').textContent);
     await sleep(500);
+    out.push('색인 완료=' + (await until(() => /모두 마쳤/.test(q('#srcmsg').textContent), 120000)));
     out.push('출처 목록=' + q('#srclist').textContent.slice(0, 80));
     document.querySelector('#tabs button[data-view=bible]').click();
     q('#goto').value = '행 24:10';
@@ -29,6 +30,8 @@
     const car = [...document.querySelectorAll('#comm-tabs button')].find((b) => /카리스/.test(b.textContent));
     if (car) { car.click(); await sleep(200); }
     out.push('카리스 주석 표시=' + (q('#notes').textContent.trim().slice(0, 60)));
+    out.push('번역본 수=' + document.querySelectorAll('#vers input').length);
+    out.push('매튜헨리 탭=' + !![...document.querySelectorAll('#comm-tabs button')].find((b) => /매튜헨리/.test(b.textContent)));
     out.push('원전 분해 행=' + document.querySelectorAll('#parse tr[data-c]').length);
     const r = [...document.querySelectorAll('#parse tr[data-c]')].find((t) => t.dataset.c === 'G611');
     if (r) r.click();
@@ -42,6 +45,12 @@
     document.querySelector('.vrow[data-v="10"]').click();
     document.querySelector('#orig-box').open = true;
     q('#side-head').scrollIntoView();
+    q('#q').value = '뉴산토스'; q('#area').value = 'comm'; document.querySelector('#tabs button[data-view=search]').click(); q('#dosearch').click();
+    await until(() => document.querySelector('#results .hit'), 20000);
+    out.push('주석 검색 결과=' + document.querySelectorAll('#results .hit').length);
+    q('#q').value = '총독'; q('#area').value = 'bible'; q('#dosearch').click(); await sleep(1500);
+    out.push('성경 검색 결과=' + document.querySelectorAll('#results .hit').length);
+    document.querySelector('#tabs button[data-view=bible]').click();
     out.push('SCREENSHOT_READY');
   } catch (e) { out.push('오류 ' + e); }
   await invoke('selftest_report', { text: out.join('\n') });

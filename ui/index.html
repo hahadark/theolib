@@ -24,14 +24,14 @@
       <select id="book"></select>
       <select id="chap"></select>
       <button id="prev">◀</button><button id="next">▶</button>
-      <span id="vers" class="vers"></span>
+      <details id="vers-box" class="versbox"><summary id="vers-sum">번역본</summary><div id="vers" class="vers"></div></details>
       <span class="spacer"></span>
       <button id="cite" title="선택한 절과 출처를 복사합니다 (2,000자 제한)">인용 복사</button>
     </div>
     <div class="cols">
       <div id="text" class="pane"></div>
       <aside class="pane side">
-        <div id="side-head" class="muted">절을 누르면 주석이 나옵니다.</div>
+        <div><span id="side-head" class="muted">절을 누르면 주석이 나옵니다.</span> <button id="whole" hidden>장 전체 주석</button></div>
         <div id="comm-tabs" class="subtabs"></div>
         <div id="notes"></div>
         <details id="orig-box"><summary>원전 분해</summary><div id="parse"></div></details>
@@ -41,21 +41,21 @@
   </section>
   <section id="view-search" hidden>
     <div class="bar">
-      <input id="q" placeholder="검색어 (구절 표기를 넣으면 그 자리로 이동)" size="40">
-      <select id="area"><option value="bible">성경 본문</option><option value="comm">주석</option></select>
+      <div id="idxnote" class="muted" hidden></div><input id="q" placeholder="검색어 (구절 표기를 넣으면 그 자리로 이동)" size="40">
+      <select id="area"><option value="bible">성경 본문(고른 번역본)</option><option value="comm">주석</option></select>
       <button id="dosearch">검색</button>
     </div>
     <div id="results" class="pane"></div>
   </section>
   <section id="view-articles" hidden>
-    <div class="bar muted">소논문 목록입니다. 본문은 정식 DB가 오면 표시됩니다.</div>
-    <div id="articlelist" class="pane"></div>
+    <div class="cols"><div id="articlelist" class="pane"></div><div id="articlebody" class="pane side"><span class="muted">소논문을 누르면 본문이 나옵니다.</span></div></div>
   </section>
   <section id="view-sources" hidden>
     <div class="pane">
       <h3>자료 출처 추가</h3>
       <p class="muted">받은 주소 하나를 붙여 넣으세요. 주소는 운영체제 보안 저장소에만 보관되고 화면과 기록에 남기지 않습니다.</p>
-      <div class="bar"><input id="srcurl" type="password" placeholder="https://…/theolib.json" size="60"><button id="srcshow" title="주소 보기">보기</button><button id="srccheck">확인</button></div>
+      <p class="muted"><b>GitHub 주소</b>: <code>https://&lt;토큰&gt;@github.com/&lt;소유자&gt;/&lt;저장소&gt;</code> (공개 저장소는 토큰 없이 <code>https://github.com/&lt;소유자&gt;/&lt;저장소&gt;</code>). 릴리스 db 의 자료를 받습니다. 그 밖에는 <code>…/theolib.json</code> 주소를 넣습니다.</p>
+      <div class="bar"><input id="srcurl" type="password" placeholder="https://…@github.com/소유자/저장소 또는 …/theolib.json" size="60"><button id="srcshow" title="주소 보기">보기</button><button id="srccheck">확인</button></div>
       <div id="srcpreview"></div>
       <h3>설치된 출처</h3>
       <div id="srclist"></div>

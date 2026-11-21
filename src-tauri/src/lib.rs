@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use theolib_core::reader::{self, Reader};
 use theolib_core::{Home, html, search, source};
@@ -11,66 +12,123 @@ fn home() -> R<Home> {
     Home::default_location().map_err(e)
 }
 
+#[derive(Serialize, Clone)]
+struct Progress {
+    label: String,
+    done: u64,
+    total: u64,
+}
+
+#[derive(Serialize)]
+struct Preview {
+    origin: String,
+    updated: String,
+    note: String,
+    files: Vec<source::FileDecl>,
+}
+
 #[tauri::command]
 fn sources() -> R<Vec<source::State>> {
     Ok(source::list_sources(&home()?))
 }
 
 #[tauri::command]
-async fn preview_source(url: String) -> R<source::Declaration> {
-    tauri::async_runtime::spawn_blocking(move || source::fetch_declaration(url.trim()).map_err(e)).await.map_err(e)?
+async fn preview_source(url: String) -> R<Preview> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ctx = source::Ctx::new(url.trim()).map_err(e)?;
+        let d = ctx.declaration().map_err(e)?;
+        Ok(Preview { origin: ctx.origin(), updated: d.updated, note: d.note, files: d.files })
+    })
+    .await
+    .map_err(e)?
 }
 
-#[derive(Serialize, Clone)]
-struct Progress {
-    file: String,
-    done: u64,
-    total: u64,
+static INDEXING: AtomicBool = AtomicBool::new(false);
+
+/// 검색 색인을 백그라운드 스레드에서 만든다. 진행률은 "progress" 이벤트, 끝나면 "index-done".
+fn start_index(app: AppHandle) {
+    if INDEXING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Ok(h) = home() else {
+        INDEXING.store(false, Ordering::SeqCst);
+        return;
+    };
+    if search::status(&h).ready {
+        INDEXING.store(false, Ordering::SeqCst);
+        return;
+    }
+    std::thread::spawn(move || {
+        let a = app.clone();
+        let mut p = move |l: &str, d: u64, t: u64| {
+            let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
+        };
+        let r = search::build_index(&h, &mut p);
+        INDEXING.store(false, Ordering::SeqCst);
+        let _ = app.emit("index-done", r.err().map(|x| x.to_string()));
+    });
+}
+
+#[tauri::command]
+fn index_status() -> R<serde_json::Value> {
+    let st = search::status(&home()?);
+    Ok(serde_json::json!({"ready": st.ready, "pending": st.pending, "running": INDEXING.load(Ordering::SeqCst)}))
+}
+
+#[tauri::command]
+fn resume_index(app: AppHandle) {
+    start_index(app);
 }
 
 #[tauri::command]
 async fn add_source(app: AppHandle, url: String, files: Vec<String>) -> R<source::State> {
     let h = home()?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut p = |f: &str, d: u64, t: u64| {
-            let _ = app.emit("progress", Progress { file: f.into(), done: d, total: t });
+    let a = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        let mut p = |l: &str, d: u64, t: u64| {
+            let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
         };
         source::add(&h, url.trim(), Some(&files), &mut p).map_err(e)
     })
     .await
-    .map_err(e)?
+    .map_err(e)??;
+    start_index(app);
+    Ok(r)
 }
 
 #[tauri::command]
-async fn sync_source(app: AppHandle, sid: String) -> R<Vec<String>> {
+async fn sync_source(app: AppHandle) -> R<Vec<String>> {
     let h = home()?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut p = |f: &str, d: u64, t: u64| {
-            let _ = app.emit("progress", Progress { file: f.into(), done: d, total: t });
+    let a = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        let mut p = |l: &str, d: u64, t: u64| {
+            let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
         };
-        source::sync(&h, &sid, &mut p).map_err(e)
+        source::sync(&h, &mut p).map_err(e)
     })
     .await
-    .map_err(e)?
+    .map_err(e)??;
+    start_index(app);
+    Ok(r)
 }
 
 #[tauri::command]
-fn remove_source(sid: String) -> R<()> {
-    source::remove(&home()?, &sid).map_err(e)
+fn remove_source() -> R<()> {
+    source::remove(&home()?).map_err(e)
 }
 
-fn rd(sid: &str) -> R<Reader> {
-    Reader::open(&home()?, sid).map_err(e)
-}
-
-#[tauri::command]
-fn books(sid: String) -> R<Vec<reader::Book>> {
-    rd(&sid)?.books().map_err(e)
+fn rd() -> R<Reader> {
+    Reader::open(&home()?).map_err(e)
 }
 
 #[tauri::command]
-fn versions(sid: String) -> R<Vec<reader::Version>> {
-    rd(&sid)?.versions().map_err(e)
+fn books() -> R<Vec<theolib_core::books::Book>> {
+    Ok(theolib_core::books::books())
+}
+
+#[tauri::command]
+fn versions() -> R<Vec<reader::Version>> {
+    rd()?.versions().map_err(e)
 }
 
 #[derive(Serialize)]
@@ -91,9 +149,7 @@ fn verse_html(kind: &str, t: &str) -> String {
         for (w, c) in reader::code_tokens(t) {
             s.push_str(&html::text_to_html(&w));
             if let Some(c) = c {
-                if c != "G0" && c != "H0" {
-                    s.push_str(&html::sanitize(&format!("<a class=\"sc\" data-c=\"{c}\">{c}</a>")));
-                }
+                s.push_str(&html::sanitize(&format!("<a class=\"sc\" data-c=\"{c}\">{c}</a>")));
             }
         }
         s
@@ -103,8 +159,8 @@ fn verse_html(kind: &str, t: &str) -> String {
 }
 
 #[tauri::command]
-fn chapter(sid: String, bk: i64, ch: i64, vers: Vec<String>) -> R<Vec<VRow>> {
-    let r = rd(&sid)?;
+fn chapter(bk: i64, ch: i64, vers: Vec<String>) -> R<Vec<VRow>> {
+    let r = rd()?;
     let kinds: std::collections::HashMap<String, String> = r.versions().map_err(e)?.into_iter().map(|v| (v.id, v.kind)).collect();
     Ok(r.chapter(bk, ch, &vers)
         .map_err(e)?
@@ -127,27 +183,30 @@ struct NoteOut {
     html: String,
 }
 
+fn note_html(fmt: &str, body: &str) -> String {
+    if fmt == "html" { html::sanitize(body) } else { html::text_to_html(body) }
+}
+
 #[tauri::command]
-fn notes(sid: String, bk: i64, ch: i64, v: Option<i64>) -> R<Vec<NoteOut>> {
-    Ok(rd(&sid)?
-        .comm_for(bk, ch, v)
+fn notes(bk: i64, ch: i64, v: Option<i64>) -> R<Vec<NoteOut>> {
+    let r = rd()?;
+    if !r.has("comm") {
+        return Ok(vec![]);
+    }
+    Ok(r.comm_for(bk, ch, v)
         .map_err(e)?
         .into_iter()
-        .map(|n| NoteOut {
-            html: if n.fmt == "html" { html::sanitize(&n.body) } else { html::text_to_html(&n.body) },
-            id: n.id,
-            comm: n.comm,
-            comm_name: n.comm_name,
-            kind: n.kind,
-            title: n.title,
-            r#ref: n.r#ref,
-        })
+        .map(|n| NoteOut { html: note_html(&n.fmt, &n.body), id: n.id, comm: n.comm, comm_name: n.comm_name, kind: n.kind, title: n.title, r#ref: n.r#ref })
         .collect())
 }
 
 #[tauri::command]
-fn parse(sid: String, bk: i64, ch: i64, v: i64) -> R<Vec<reader::ParseWord>> {
-    rd(&sid)?.parse(bk, ch, v).map_err(e)
+fn parse(bk: i64, ch: i64, v: i64) -> R<Vec<reader::ParseWord>> {
+    let r = rd()?;
+    if !r.has("orig") {
+        return Ok(vec![]);
+    }
+    r.parse(bk, ch, v).map_err(e)
 }
 
 #[derive(Serialize)]
@@ -159,23 +218,36 @@ struct LexOut {
 }
 
 #[tauri::command]
-fn lex(sid: String, code: String) -> R<Vec<LexOut>> {
-    Ok(rd(&sid)?.lex(&code).map_err(e)?.into_iter().map(|x| LexOut { html: html::sanitize(&x.html), dict: x.dict, code: x.code, head: x.head }).collect())
+fn lex(code: String) -> R<Vec<LexOut>> {
+    let r = rd()?;
+    if !r.has("orig") {
+        return Ok(vec![]);
+    }
+    Ok(r.lex(&code).map_err(e)?.into_iter().map(|x| LexOut { html: html::sanitize(&x.html), dict: x.dict, code: x.code, head: x.head }).collect())
 }
 
 #[tauri::command]
-fn search_text(sid: String, q: String, area: String) -> R<Vec<search::Hit>> {
-    search::search(&home()?, &sid, &q, &area, 100).map_err(e)
+fn search_text(q: String, area: String, vers: Vec<String>) -> R<Vec<search::Hit>> {
+    search::search(&home()?, &q, &area, &vers, 100).map_err(e)
 }
 
 #[tauri::command]
-fn goto_ref(sid: String, input: String) -> R<Option<(i64, i64, Option<i64>)>> {
-    Ok(rd(&sid)?.parse_ref(&input))
+fn goto_ref(input: String) -> R<Option<(i64, i64, Option<i64>)>> {
+    Ok(theolib_core::books::parse_ref(&input))
 }
 
 #[tauri::command]
-fn articles(sid: String) -> R<Vec<reader::Article>> {
-    rd(&sid)?.articles().map_err(e)
+fn articles() -> R<Vec<reader::Article>> {
+    let r = rd()?;
+    if !r.has("comm") {
+        return Ok(vec![]);
+    }
+    r.articles().map_err(e)
+}
+
+#[tauri::command]
+fn article_body(id: i64) -> R<String> {
+    Ok(html::text_to_html(&rd()?.article_body(id).map_err(e)?))
 }
 
 /// 시험 빌드(--features selftest) 전용: 화면 조작을 흉내 내고 결과를 파일로 남긴다. 배포 빌드에는 없다.
@@ -198,12 +270,12 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, sync_source, remove_source, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, selftest_report
+        sources, preview_source, add_source, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body, selftest_report
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, sync_source, remove_source, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles
+            sources, preview_source, add_source, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");

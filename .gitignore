@@ -5,3 +5,4 @@ data/
 *.db.gz
 .theolib-test/
 docs/*.png
+real-source/
