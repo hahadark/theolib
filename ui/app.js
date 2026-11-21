@@ -101,7 +101,7 @@ function itemHiddenKey(f) {
 const KORD = { bible: 0, code: 1, lex: 2, comm: 3 };
 const GORD = { '한국어': 0, '영어': 1, '원어': 2, '외국어': 3 };
 const DEFAULT_NAMES = ['개역개정', '개역한글', '새번역', 'ESV', 'NIV2011', 'KJV1769'];
-const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [], filter: 'all', collapsed: {}, focusKind: null };
+const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [], filter: 'all', collapsed: {}, expanded: {}, focusKind: null, anchorId: null };
 async function previewUrl(url) {
   msg('선언 파일을 확인하는 중…');
   let d;
@@ -152,7 +152,7 @@ async function handlePaths(paths) {
     itemState.installed = src.length ? src[0].items || [] : [];
     itemState.local = true; itemState.rawLocal = ok;
     itemState.files = ok.map((i) => ({ ...i, license: i.desc, sha256: '' }));
-    itemState.sel = new Set(itemState.files.map((f) => f.id)); itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
+    itemState.sel = new Set(itemState.files.map((f) => f.id)); itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1; itemState.filter = 'all'; itemState.collapsed = {}; itemState.expanded = {};
     $('#srcpreview').innerHTML = `<div class="note"><b>내 파일</b> <span class="muted">${ok.length}개 인식</span>${bad.length ? `<div class="err">건너뜀 ${bad.length}개: ${bad.map((b) => esc(b.name + ' (' + b.skip + ')')).join(', ')}</div>` : ''}</div>`;
     msg(`${ok.length}개를 인식했습니다.`);
     drawItems();
@@ -194,7 +194,7 @@ async function showItems(d, url) {
   const src = await invoke('sources');
   itemState.installed = src.length ? src[0].items || [] : [];
   itemState.local = false; itemState.url = url; itemState.files = d.files; itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
-  itemState.filter = 'all'; itemState.collapsed = {}; itemState.focusKind = null; itemState.anchorId = null;
+  itemState.filter = 'all'; itemState.collapsed = {}; itemState.expanded = {}; itemState.focusKind = null; itemState.anchorId = null;
   itemState.sel = new Set(d.files.filter(defaultSelected).map((f) => f.id));
   drawItems();
 }
@@ -300,42 +300,84 @@ function tilesHtml(items) {
   }
   return out.join('');
 }
+// 종류·분류·시리즈를 아우르는 접힌 요약 줄 목록을 만든다.
+function summaryRows(files) {
+  const rows = [];
+  const push = (key, label, items, kind, series) => rows.push({ key, label, items, kind, series });
+  const bibles = files.filter((f) => f.kind === 'bible');
+  for (const grp of ['한국어', '영어', '원어', '외국어']) {
+    const arr = bibles.filter((f) => f.grp === grp);
+    if (arr.length) push('bible:' + grp, grp === '원어' ? '원어 번역본' : grp + ' 번역본', arr, 'bible', null);
+  }
+  const etc = bibles.filter((f) => !['한국어', '영어', '원어', '외국어'].includes(f.grp));
+  if (etc.length) push('bible:기타', '기타 번역본', etc, 'bible', null);
+  const codes = files.filter((f) => f.kind === 'code');
+  if (codes.length) push('code', '원어 번호 본문·원전 분해', codes, 'code', null);
+  const lexs = files.filter((f) => f.kind === 'lex');
+  if (lexs.length) push('lex', '원어 사전', lexs, 'lex', null);
+  const comms = files.filter((f) => f.kind === 'comm');
+  const seen = new Set();
+  for (const f of comms) {
+    const key = isSplit(f) ? 'series:' + f.series : 'comm:' + f.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const items = isSplit(f) ? comms.filter((x) => x.series === f.series) : [f];
+    const label = isSplit(f) ? (f.series_name || String(f.name).split(' · ')[0]) : f.name;
+    push(key, label, items, 'comm', isSplit(f) ? f.series : null);
+  }
+  return rows;
+}
+// 줄 요약: 선택 상태(전부/일부/없음)와 숫자들.
+function rowState(items) {
+  const split = items.length > 0 && isSplit(items[0]);
+  const nOn = items.filter((f) => itemState.sel.has(f.id)).length;
+  const selBytes = items.filter((f) => itemState.sel.has(f.id)).reduce((a, f) => a + f.bytes, 0);
+  const selDb = items.filter((f) => itemState.sel.has(f.id)).reduce((a, f) => a + f.db_bytes, 0);
+  const have = items.filter((f) => statusOf(f) !== '안 받음').length;
+  const tick = nOn === 0 ? 'off' : (nOn === items.length ? 'on' : 'part');
+  return { split, nOn, total: items.length, selBytes, selDb, have, tick };
+}
+// 줄을 펼쳤을 때 그 줄에 속한 타일(일반 묶음은 타일, 책별 시리즈는 시리즈 타일+책)을 그린다.
+function rowTilesHtml(row, items) {
+  if (row.kind === 'comm' && isSplit(items[0])) return seriesHtml(row.series, items);
+  return `<div class="it-tiles" data-kind="${row.kind}">${tilesHtml(items)}</div>`;
+}
 function drawItems() {
   const { files, sel } = itemState;
-  const vis = visibleFiles();
+  const base = files.filter((f) => {
+    const st = statusOf(f);
+    if (itemState.filter === 'have' && st !== '받음') return false;
+    if (itemState.filter === 'none' && st !== '안 받음') return false;
+    if (itemState.filter === 'new' && st !== '새 판 있음') return false;
+    return true;
+  });
+  const ql = itemState.q.trim().toLowerCase();
+  const qMatch = (f) => !ql || (f.name + ' ' + f.grp + ' ' + (KIND[f.kind] || '') + ' ' + (f.license || '')).toLowerCase().includes(ql);
   const chosen = files.filter((f) => sel.has(f.id));
   const total = chosen.reduce((a, f) => a + f.bytes, 0);
-  const panels = groupPanels();
 
   let filterBar = '<div class="it-bar">';
   for (const [k, lab] of [['all', '전체'], ['have', '받은 것'], ['none', '안 받은 것'], ['new', '새 판 있음']])
     filterBar += `<button type="button" class="it-fbtn${itemState.filter === k ? ' on' : ''}" data-filter="${k}">${lab}</button>`;
-  filterBar += `<input id="itq" placeholder="이름·분류·근거로 검색" value="${esc(itemState.q)}"><span class="muted">${vis.length}/${files.length}항목</span></div>`;
+  filterBar += `<input id="itq" placeholder="이름·분류·근거로 검색" value="${esc(itemState.q)}"><span class="muted">${chosen.length}/${files.length}항목 선택</span></div>`;
 
+  const rows = summaryRows(base);
   let body = '';
-  for (const kind of KINDS_ORDER) {
-    const parts = panels.filter((p) => p.kind === kind);
-    if (!parts.length) continue;
-    const all = vis.filter((f) => f.kind === kind);
-    const n = all.length, m = all.filter((f) => sel.has(f.id)).length;
-    const mb = all.filter((f) => sel.has(f.id)).reduce((a, f) => a + f.bytes, 0);
-    const ck = 'kind:' + kind;
-    const collapsed = !!(itemState.collapsed && itemState.collapsed[ck]);
-    const allOn = m === n;
-    let inner = '';
-    for (const p of parts) {
-      if (p.grp) inner += `<div class="it-sub" data-kind="${kind}"><div class="it-subh">${esc(p.grp)} <span class="muted">${p.items.length}</span></div><div class="it-tiles">${tilesHtml(p.items)}</div></div>`;
-      else inner += `<div class="it-tiles" data-kind="${kind}">${tilesHtml(p.items)}</div>`;
-    }
-    body += `<section class="it-card" data-kind="${kind}" tabindex="0">
-      <header class="it-head">
-        <button type="button" class="it-cfold" data-cfold="${ck}" aria-expanded="${!collapsed}">${collapsed ? '▸' : '▾'} <b>${esc(KIND[kind] || kind)}</b></button>
-        <span class="it-stats muted">${n}개 · 고른 것 ${m}개 · ${fmtB(mb)}</span>
+  for (const row of rows) {
+    const matchItems = ql ? row.items.filter(qMatch) : row.items;
+    if (ql && !matchItems.length) continue; // 검색 중: 맞는 항목이 있는 줄만 보인다
+    const expanded = ql ? true : !!(itemState.expanded && itemState.expanded[row.key]);
+    const st = rowState(ql ? matchItems : row.items);
+    body += `<div class="it-row" data-kind="${row.kind}" data-key="${esc(row.key)}">
+      <div class="it-row-head" tabindex="0">
+        <button type="button" class="it-cbox ${st.tick}" data-key="${esc(row.key)}" title="이 줄 전체를 고르거나 해제"></button>
+        <button type="button" class="it-row-exp" data-key="${esc(row.key)}" aria-expanded="${expanded}" title="펼치기·접기">${expanded ? '▾' : '▸'}</button>
+        <span class="it-row-name">${esc(row.label)}</span>
+        <span class="it-row-meta muted">고른 ${st.nOn}/${st.total}${st.split ? '책' : '개'} · ${fmtB(st.selBytes)} 받기 · 풀면 ${fmtB(st.selDb)} · 받음 ${st.have}${st.split ? '책' : '개'}</span>
         <span class="spacer"></span>
-        <button type="button" class="it-selall" data-kind="${kind}" data-on="${allOn ? 0 : 1}">${allOn ? '해제' : '모두 선택'}</button>
-      </header>
-      ${collapsed ? '' : inner}
-    </section>`;
+      </div>
+      <div class="it-row-body"${expanded ? '' : ' hidden'}>${rowTilesHtml(row, ql ? matchItems : row.items)}</div>
+    </div>`;
   }
   if (!body) body = '<p class="muted it-empty">조건에 맞는 항목이 없습니다.</p>';
 
@@ -346,9 +388,26 @@ function drawItems() {
 
   const qi = $('#itq'); qi.oninput = () => { itemState.q = qi.value; drawItems(); };
   $('#itemsbox').querySelectorAll('.it-fbtn').forEach((b) => (b.onclick = () => { itemState.filter = b.dataset.filter; itemState.focusKind = null; drawItems(); }));
-  $('#itemsbox').querySelectorAll('.it-cfold').forEach((b) => (b.onclick = () => { const k = b.dataset.cfold; itemState.collapsed[k] = !itemState.collapsed[k]; drawItems(); itemState.focusKind = k.slice(5); }));
-  $('#itemsbox').querySelectorAll('.it-selall').forEach((b) => (b.onclick = () => { const kind = b.dataset.kind, on = b.dataset.on === '1'; for (const f of vis) if (f.kind === kind) on ? sel.add(f.id) : sel.delete(f.id); itemState.focusKind = kind; drawItems(); }));
-  $('#itemsbox').querySelectorAll('.it-card').forEach((c) => (c.onclick = (ev) => { if (ev.target.closest('button') || ev.target.closest('.it-tile')) return; itemState.focusKind = c.dataset.kind; }));
+  // 줄 체크박스: 그 줄의 항목 전부 선택/해제
+  $('#itemsbox').querySelectorAll('.it-cbox').forEach((b) => (b.onclick = () => {
+    const row = summaryRows(base).find((r) => r.key === b.dataset.key);
+    const ids = (row ? row.items : []).map((f) => f.id);
+    const allOn = ids.length > 0 && ids.every((x) => sel.has(x));
+    for (const id of ids) allOn ? sel.delete(id) : sel.add(id);
+    itemState.focusKind = row ? row.kind : null;
+    drawItems();
+  }));
+  // 줄 ▸ 펼치기·접기
+  $('#itemsbox').querySelectorAll('.it-row-exp').forEach((b) => (b.onclick = () => {
+    itemState.expanded = itemState.expanded || {};
+    itemState.expanded[b.dataset.key] = !itemState.expanded[b.dataset.key];
+    drawItems();
+  }));
+  // 줄 머리(체크박스·펼침·타일이 아닌 곳)를 누르면 그 종류에 초점(⌘A 대상)
+  $('#itemsbox').querySelectorAll('.it-row').forEach((r) => r.addEventListener('click', (ev) => {
+    if (ev.target.closest('button') || ev.target.closest('.it-tile')) return;
+    itemState.focusKind = r.dataset.kind;
+  }));
   bindTiles();
 
   if (itemState.local) return drawLocalButtons();

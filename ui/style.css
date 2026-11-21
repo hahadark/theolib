@@ -69,8 +69,25 @@ table.items tr.hidden-row:hover{opacity:.8}
 #itemsbox .it-bar input{flex:1 1 180px;min-width:120px}
 #itemsbox .it-fbtn{border:1px solid var(--line);border-radius:14px;padding:2px 12px;font-size:12.5px;background:none;color:var(--fg);cursor:pointer}
 #itemsbox .it-fbtn.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-#itemsbox .it-scroll{overflow:visible;flex:1;min-height:0;padding:10px 12px;display:flex;flex-direction:column;gap:12px}
+/* 스크롤 영역: 높이를 명시해 내부 스크롤을 만들고, 아래 고정 줄이 항상 보이게 한다. */
+#itemsbox .it-scroll{overflow:auto;flex:1;min-height:200px;max-height:min(58vh,720px);padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .it-empty{padding:20px;text-align:center}
+
+/* ---- 접힌 요약 줄 목록 ---- */
+.it-row{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.it-row-head{display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer}
+.it-row-head .spacer{flex:1}
+.it-row-name{font-weight:700;font-size:14px;white-space:nowrap}
+.it-row-meta{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 세 상태 체크박스(전부/일부/없음) —— 브라우저 기본 모양에 기대지 않고 CSS 로 그린다 */
+.it-cbox{flex:none;width:18px;height:18px;border:1.5px solid var(--line);border-radius:4px;background:var(--bg);cursor:pointer;padding:0;position:relative}
+.it-cbox.on{background:var(--acc);border-color:var(--acc)}
+.it-cbox.on::after{content:'';position:absolute;left:5px;top:2px;width:5px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.it-cbox.part{border-color:var(--acc)}
+.it-cbox.part::after{content:'';position:absolute;left:3px;top:8px;width:10px;height:2px;background:var(--acc)}
+.it-row-exp{flex:none;border:none;background:none;color:var(--acc);cursor:pointer;font-size:14px;padding:0;min-width:16px}
+.it-row-body{padding:4px 8px 8px 12px;border-top:1px solid var(--line);background:color-mix(in srgb, var(--line) 12%, transparent)}
+.it-row-body[hidden]{display:none}
 .it-card{border:1px solid var(--line);border-radius:10px;overflow:visible;outline:none;padding:0 0 4px}
 .it-card:focus-within{box-shadow:0 0 0 2px var(--acc)}
 .it-head{display:flex;align-items:center;gap:10px;padding:8px 12px;background:color-mix(in srgb, var(--line) 40%, transparent);border-bottom:1px solid var(--line);border-radius:10px 10px 0 0}
@@ -96,7 +113,7 @@ table.items tr.hidden-row:hover{opacity:.8}
 .it-bytes{font-size:12px}
 .it-license{font-size:11px;color:var(--mut)}
 .it-progress{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--acc)}
-.it-foot{display:flex;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line);background:var(--bg);z-index:3;flex:none;position:sticky;bottom:0}
+.it-foot{display:flex;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line);background:var(--bg);z-index:3;flex:none;position:sticky;bottom:0;box-shadow:0 -2px 6px color-mix(in srgb, var(--fg) 8%, transparent)}
 .it-foot .spacer{flex:1}
 .it-foot button{min-height:32px}
 .it-rect{position:fixed;border:1px solid var(--acc);background:color-mix(in srgb, var(--acc) 15%, transparent);z-index:1000;pointer-events:none}
