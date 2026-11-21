@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use theolib_core::reader::{self, Reader};
-use theolib_core::{Home, html, search, source};
+use theolib_core::{Home, html, search, source, user};
 
 type R<T> = Result<T, String>;
 fn e<E: std::fmt::Display>(x: E) -> String {
@@ -341,6 +341,41 @@ fn lex(code: String) -> R<Vec<LexOut>> {
     Ok(r.lex(&code).map_err(e)?.into_iter().map(|x| LexOut { html: html::sanitize(&x.html), dict: x.dict, code: x.code, head: x.head }).collect())
 }
 
+
+#[tauri::command]
+fn user_list(bk: i64, ch: i64) -> R<serde_json::Value> {
+    let c = user::open(&home()?).map_err(e)?;
+    Ok(serde_json::json!({
+        "bookmarks": user::list_bookmarks(&c).map_err(e)?,
+        "memos": user::list_memos(&c, bk, ch).map_err(e)?,
+        "highlights": user::list_highlights(&c, bk, ch).map_err(e)?,
+    }))
+}
+#[tauri::command]
+fn bookmark_add(bk: i64, ch: i64, v: i64, label: String) -> R<i64> {
+    user::add_bookmark(&user::open(&home()?).map_err(e)?, bk, ch, v, &label).map_err(e)
+}
+#[tauri::command]
+fn bookmark_delete(id: i64) -> R<bool> {
+    user::delete_bookmark(&user::open(&home()?).map_err(e)?, id).map_err(e)
+}
+#[tauri::command]
+fn memo_save(id: Option<i64>, bk: i64, ch: i64, v: i64, body: String) -> R<i64> {
+    let c = user::open(&home()?).map_err(e)?;
+    match id {
+        Some(i) if user::update_memo(&c, i, &body).map_err(e)? => Ok(i),
+        _ => user::add_memo(&c, bk, ch, v, &body).map_err(e),
+    }
+}
+#[tauri::command]
+fn memo_delete(id: i64) -> R<bool> {
+    user::delete_memo(&user::open(&home()?).map_err(e)?, id).map_err(e)
+}
+#[tauri::command]
+fn highlight_set(bk: i64, ch: i64, v: i64, color: String) -> R<()> {
+    user::set_highlight(&user::open(&home()?).map_err(e)?, bk, ch, v, &color).map_err(e)
+}
+
 /// 화면의 숨김 목록(v:/d:/s: 키)을 코어에 전달한다. 검색·목록에서 빠진다.
 #[tauri::command]
 fn set_hidden(hidden: Vec<String>) -> R<()> {
@@ -392,12 +427,12 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, goto_ref, articles, article_body, selftest_report
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, selftest_report
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, goto_ref, articles, article_body
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");
