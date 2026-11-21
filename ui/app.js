@@ -1666,3 +1666,30 @@ Layout.init(document.querySelector('#panes'), {
 Fmt.apply();
 toolbarName();
 boot();
+
+
+// ---- 자동 업데이트(Rust 가 하루 한 번 조용히 확인·내려받음. 재시작은 사용자가 누를 때만)
+function updRender(st) {
+  if (!st) return;
+  $('#updver').textContent = '지금 버전 v' + st.current;
+  const ready = st.status === 'ready';
+  $('#updgo').hidden = !ready;
+  $('#updgo').textContent = '새 판 v' + st.version + ' 준비됨 — 지금 다시 시작';
+  $('#updmsg').textContent = ready ? '' : (st.message || '');
+}
+async function updRefresh() { try { updRender(await invoke('update_status')); } catch (_) {} }
+$('#updcheck').onclick = async () => {
+  $('#updcheck').disabled = true; $('#updmsg').textContent = '확인 중…';
+  try { updRender(await invoke('update_check')); } catch (x) { $('#updmsg').textContent = '업데이트를 확인하지 못했습니다.'; }
+  $('#updcheck').disabled = false;
+};
+$('#updgo').onclick = async () => {
+  if (!confirm('앱을 닫고 새 판으로 바꿔 다시 시작합니다. 편집 중인 메모가 있으면 먼저 저장해 주세요. 지금 다시 시작할까요?')) return;
+  try { await invoke('update_install'); } catch (x) { $('#updmsg').textContent = String(x); }
+};
+$('#updtokensave').onclick = async () => {
+  try { await invoke('update_set_token', { url: $('#updtoken').value }); $('#updtoken').value = ''; $('#updmsg').textContent = '저장했습니다.'; } catch (x) { $('#updmsg').textContent = String(x); }
+};
+listen('update-progress', (ev) => { const p = ev.payload || {}; $('#updmsg').textContent = p.total ? `새 판 받는 중 ${Math.floor((p.done * 100) / p.total)}%` : '새 판 받는 중…'; });
+listen('update-ready', (ev) => updRender(ev.payload));
+updRefresh();

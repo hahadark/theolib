@@ -55,24 +55,28 @@ jobs:
           Compress-Archive -Path portable/* -DestinationPath "dist/Theolib-$v-windows-x64-portable.zip"
           Get-ChildItem dist
 
+      - name: 자동 업데이트 서명 (NSIS 설치본)
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            Write-Host "::warning::TAURI_SIGNING_PRIVATE_KEY Secret 이 없어 업데이트 서명을 건너뜁니다(자동 업데이트 불가)."
+          } else {
+            $f = Get-ChildItem dist/*-setup.exe | Select-Object -First 1
+            cargo tauri signer sign $f.FullName
+            Get-ChildItem dist
+          }
+
       - uses: actions/upload-artifact@v4
         with:
           name: 신학-서재-윈도우
           path: |
             dist/*.exe
+            dist/*.exe.sig
             dist/*.zip
           if-no-files-found: error
-
-      - name: 태그 릴리스 첨부
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: 신학 서재 ${{ github.ref_name }}
-          body_path: .github/RELEASE_NOTES.md
-          make_latest: true
-          files: |
-            dist/*.exe
-            dist/*.zip
 
   build-macos:
     name: 빌드 (macOS)
@@ -96,24 +100,86 @@ jobs:
       - name: 빌드 (.app 번들)
         run: cargo tauri build --bundles app
 
-      - name: 앱 압축
+      - name: 앱 압축 (수동 설치용 zip + 자동 업데이트용 .app.tar.gz)
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="$GITHUB_REF_NAME"; else v="dev-${GITHUB_SHA:0:7}"; fi
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent target/release/bundle/macos/*.app "dist/Theolib-$v-mac-arm64.zip"
+          app=$(ls -d target/release/bundle/macos/*.app | head -1)
+          COPYFILE_DISABLE=1 tar -czf "dist/Theolib-$v-mac-arm64.app.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
           ls -la dist
+
+      - name: 자동 업데이트 서명 (.app.tar.gz)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY Secret 이 없어 업데이트 서명을 건너뜁니다(자동 업데이트 불가)."
+          else
+            cargo tauri signer sign dist/*.app.tar.gz
+            ls -la dist
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: 신학-서재-맥
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.app.tar.gz
+            dist/*.app.tar.gz.sig
           if-no-files-found: error
 
+  release:
+    name: 릴리스 (latest.json 포함)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: latest.json 만들기
+        run: |
+          ls -la dist
+          python3 - <<'PY'
+          import json, os, glob, datetime
+          tag = os.environ["GITHUB_REF_NAME"]
+          base = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}/"
+          def plat(pattern):
+              fs = glob.glob("dist/" + pattern)
+              if not fs or not os.path.exists(fs[0] + ".sig"):
+                  return None
+              return {"signature": open(fs[0] + ".sig").read().strip(), "url": base + os.path.basename(fs[0])}
+          platforms = {}
+          m = plat("*-mac-arm64.app.tar.gz")
+          if m: platforms["darwin-aarch64"] = m
+          w = plat("*-windows-x64-setup.exe")
+          if w: platforms["windows-x86_64"] = w
+          if not platforms:
+              print("::warning::서명된 자산이 없어 latest.json 을 만들지 않습니다(TAURI_SIGNING_PRIVATE_KEY Secret 확인).")
+          else:
+              out = {"version": tag.lstrip("v"), "notes": "", "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "platforms": platforms}
+              json.dump(out, open("dist/latest.json", "w"), ensure_ascii=False, indent=2)
+              print(json.dumps(out, indent=2)[:1500])
+          PY
+
       - name: 태그 릴리스 첨부
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           name: 신학 서재 ${{ github.ref_name }}
           body_path: .github/RELEASE_NOTES.md
           make_latest: true
-          files: dist/*.zip
+          files: |
+            dist/*.exe
+            dist/*.exe.sig
+            dist/*.zip
+            dist/*.app.tar.gz
+            dist/*.app.tar.gz.sig
+            dist/latest.json

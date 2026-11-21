@@ -8,7 +8,7 @@
     "withGlobalTauri": true,
     "windows": [{ "label": "main", "title": "신학 서재", "width": 1320, "height": 840, "minWidth": 900, "minHeight": 600 }],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost https://github.com https://objects.githubusercontent.com https://release-assets.githubusercontent.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     }
   },
   "bundle": {
@@ -16,5 +16,12 @@
     "targets": ["app"],
     "category": "Education",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/hahadark/theolib/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc1QUQwOTUyRThBQ0ZBQ0YKUldUUCtxem9VZ210ZFRiWGQ0bnJMcHpkZVhjV2dJbzM4eEZDMjRzN0l4SU5oVVpqR2EwNEhwOEIK",
+      "windows": { "installMode": "quiet" }
+    }
   }
 }

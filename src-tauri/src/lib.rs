@@ -1,3 +1,4 @@
+mod update;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
@@ -413,11 +414,38 @@ fn selftest_report(text: String) {
     let _ = std::fs::write(std::env::var("THEOLIB_SELFTEST_OUT").unwrap_or("/tmp/theolib-selftest.txt".into()), text);
 }
 
+#[tauri::command]
+fn update_status(app: AppHandle) -> update::UpdateState {
+    update::current_state(&app)
+}
+
+#[tauri::command]
+async fn update_check(app: AppHandle) -> update::UpdateState {
+    update::check(&app, true).await
+}
+
+#[tauri::command]
+fn update_install(app: AppHandle) -> R<()> {
+    update::install_and_restart(&app)
+}
+
+#[tauri::command]
+fn update_set_token(url: String) -> R<()> {
+    update::set_token(&url)
+}
+
 #[cfg(feature = "selftest")]
 const SELFTEST_JS: &str = include_str!("../selftest.js");
 
 pub fn run() {
-    let b = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let b = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            update::spawn_auto(app.handle().clone());
+            Ok(())
+        });
     #[cfg(feature = "selftest")]
     let b = b.on_page_load(|w, _| {
         if let Ok(url) = std::env::var("THEOLIB_SELFTEST_URL") {
@@ -427,12 +455,12 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, selftest_report
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, selftest_report
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");
