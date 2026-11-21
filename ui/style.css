@@ -62,6 +62,50 @@ table.items tr.hidden-row:hover{opacity:.8}
 .hide-toggle{font-size:11px;padding:0 6px;margin-right:6px;border:1px solid var(--line);border-radius:4px;background:none;color:var(--mut);cursor:pointer}
 .itemscroll{max-height:420px;overflow:auto;border:1px solid #ddd}
 
+/* ---- 자료 받기: 종류별 상자·타일·영역 선택 ---- */
+#itemsbox{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);border-radius:8px;background:var(--bg);position:relative}
+#itemsbox .it-bar{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+#itemsbox .it-bar input{flex:1 1 180px;min-width:120px}
+#itemsbox .it-fbtn{border:1px solid var(--line);border-radius:14px;padding:2px 12px;font-size:12.5px;background:none;color:var(--fg);cursor:pointer}
+#itemsbox .it-fbtn.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+#itemsbox .it-scroll{overflow:auto;flex:1;min-height:0;max-height:62vh;padding:10px 12px;display:flex;flex-direction:column;gap:12px}
+.it-empty{padding:20px;text-align:center}
+.it-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;outline:none}
+.it-card:focus-within{box-shadow:0 0 0 2px var(--acc)}
+.it-head{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--line);background:color-mix(in srgb, var(--line) 40%, transparent);border-bottom:1px solid var(--line)}
+.it-cfold{border:none;background:none;color:var(--fg);cursor:pointer;font-size:14px;display:flex;align-items:center;gap:4px;padding:0}
+.it-stats{font-size:12.5px}
+.it-selall{border:1px solid var(--line);border-radius:6px;background:none;color:var(--acc);cursor:pointer;font-size:12.5px;padding:2px 10px}
+.it-sub{margin-top:8px}
+.it-subh{font-size:12px;color:var(--mut);font-weight:600;margin:0 2px 6px}
+.it-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));gap:8px;min-width:0}
+.it-tile{position:relative;display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--bg);padding:8px 10px;cursor:pointer;color:var(--fg);overflow:hidden;user-select:none;-webkit-user-select:none}
+.it-tile.on{border-color:var(--acc);background:color-mix(in srgb, var(--sel) 55%, var(--bg));box-shadow:0 0 0 1px var(--acc) inset}
+.it-tile.hidden{opacity:.42}
+.it-tile-top{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%}
+.it-name{font-weight:700;font-size:14px}
+.it-hide{font-size:11px;color:var(--mut);cursor:pointer;border:1px solid var(--line);border-radius:4px;padding:0 6px}
+.it-tile-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mut);flex-wrap:wrap}
+.it-grp{font-size:12px;color:var(--mut)}
+.it-status{font-size:11px;border-radius:10px;padding:0 8px;line-height:1.5}
+.it-status.st-have{color:#2e7d32;background:color-mix(in srgb, #2e7d32 15%, transparent)}
+.it-status.st-new{color:#b45309;background:color-mix(in srgb, #b45309 15%, transparent)}
+.it-bytes{font-size:12px}
+.it-license{font-size:11px;color:var(--mut)}
+.it-progress{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--acc)}
+.it-foot{display:flex;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line);background:var(--bg);z-index:3;flex:none}
+.it-foot .spacer{flex:1}
+.it-foot button{min-height:32px}
+.it-rect{position:fixed;border:1px solid var(--acc);background:color-mix(in srgb, var(--acc) 15%, transparent);z-index:1000;pointer-events:none}
+.dragging{user-select:none;-webkit-user-select:none;cursor:crosshair}
+.dragging *{user-select:none!important;-webkit-user-select:none!important}
+
+/* 390px 이하: 타일 한 열 */
+@media (max-width: 430px){
+  .it-tiles{grid-template-columns:minmax(0,1fr)}
+}
+
+
 /* ---- 좁은 화면(720px 미만): 위쪽 바가 줄바꿈되어 넘치지 않고, 누르는 단추는 36px 이상 */
 @media (max-width: 719px) {
   header { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }

@@ -60,18 +60,46 @@
   const ARTICLES = [{ id: 1, series: '시험시리즈', src_name: '시험 출처', section: '신약', title: '시험 소논문 제목', kind: 'article', chars: 12 }];
 
   // ---- 자료 출처(항목 목록)용 가짜 데이터
+  // 번역본 20종(분류 4종)·원어 번호 본문 4·사전 2·주석 6. 이름은 '번역본 A' 같은 가짜.
   const MOCK_FILES = [
-    { id: 'bible:개역개정', kind: 'bible', name: '개역개정', grp: '한국어', bytes: 102400, sha256: 'a1', license: '시험 근거', db_bytes: 204800 },
-    { id: 'bible:새번역', kind: 'bible', name: '새번역', grp: '한국어', bytes: 204800, sha256: 'a2', license: '시험 근거', db_bytes: 409600 },
-    { id: 'code:KJV_S', kind: 'code', name: 'KJV 원어 번호', grp: '원어', bytes: 51200, sha256: 'a3', license: '시험 근거', db_bytes: 102400 },
-    { id: 'lex:HebGrkKo', kind: 'lex', name: 'HebGrkKo', grp: '한글', bytes: 25600, sha256: 'a4', license: '시험 근거', db_bytes: 51200 },
-    { id: 'comm:카리스', kind: 'comm', name: '카리스', grp: '주석', bytes: 307200, sha256: 'a5', license: '시험 근거', db_bytes: 614400 },
-    { id: 'comm:IVP', kind: 'comm', name: 'IVP', grp: '주석', bytes: 12800, sha256: 'a6', license: '시험 근거', db_bytes: 25600 },
+    { id: 'bible:한국1', kind: 'bible', name: '번역본 A', grp: '한국어', bytes: 102400, sha256: 'b1', license: '시험 근거', db_bytes: 204800, default: 1 },
+    { id: 'bible:한국2', kind: 'bible', name: '번역본 B', grp: '한국어', bytes: 153600, sha256: 'b2', license: '시험 근거', db_bytes: 307200 },
+    { id: 'bible:한국3', kind: 'bible', name: '번역본 C', grp: '한국어', bytes: 204800, sha256: 'b3', license: '시험 근거', db_bytes: 409600 },
+    { id: 'bible:한국4', kind: 'bible', name: '번역본 D', grp: '한국어', bytes: 128000, sha256: 'b4', license: '시험 근거', db_bytes: 256000 },
+    { id: 'bible:한국5', kind: 'bible', name: '번역본 E', grp: '한국어', bytes: 89600, sha256: 'b5', license: '시험 근거', db_bytes: 179200 },
+    { id: 'bible:영1', kind: 'bible', name: '번역본 F', grp: '영어', bytes: 115200, sha256: 'b6', license: '시험 근거', db_bytes: 230400 },
+    { id: 'bible:영2', kind: 'bible', name: '번역본 G', grp: '영어', bytes: 140800, sha256: 'b7', license: '시험 근거', db_bytes: 281600 },
+    { id: 'bible:영3', kind: 'bible', name: '번역본 H', grp: '영어', bytes: 99840, sha256: 'b8', license: '시험 근거', db_bytes: 199680 },
+    { id: 'bible:영4', kind: 'bible', name: '번역본 I', grp: '영어', bytes: 125440, sha256: 'b9', license: '시험 근거', db_bytes: 250880 },
+    { id: 'bible:영5', kind: 'bible', name: '번역본 J', grp: '영어', bytes: 138240, sha256: 'b10', license: '시험 근거', db_bytes: 276480 },
+    { id: 'bible:원1', kind: 'bible', name: '번역본 K', grp: '원어', bytes: 76800, sha256: 'b11', license: '시험 근거', db_bytes: 153600 },
+    { id: 'bible:원2', kind: 'bible', name: '번역본 L', grp: '원어', bytes: 84480, sha256: 'b12', license: '시험 근거', db_bytes: 168960 },
+    { id: 'bible:원3', kind: 'bible', name: '번역본 M', grp: '원어', bytes: 92160, sha256: 'b13', license: '시험 근거', db_bytes: 184320 },
+    { id: 'bible:원4', kind: 'bible', name: '번역본 N', grp: '원어', bytes: 61440, sha256: 'b14', license: '시험 근거', db_bytes: 122880 },
+    { id: 'bible:원5', kind: 'bible', name: '번역본 O', grp: '원어', bytes: 69120, sha256: 'b15', license: '시험 근거', db_bytes: 138240 },
+    { id: 'bible:외1', kind: 'bible', name: '번역본 P', grp: '외국어', bytes: 107520, sha256: 'b16', license: '시험 근거', db_bytes: 215040 },
+    { id: 'bible:외2', kind: 'bible', name: '번역본 Q', grp: '외국어', bytes: 133120, sha256: 'b17', license: '시험 근거', db_bytes: 266240 },
+    { id: 'bible:외3', kind: 'bible', name: '번역본 R', grp: '외국어', bytes: 120320, sha256: 'b18', license: '시험 근거', db_bytes: 240640 },
+    { id: 'bible:외4', kind: 'bible', name: '번역본 S', grp: '외국어', bytes: 97280, sha256: 'b19', license: '시험 근거', db_bytes: 194560 },
+    { id: 'bible:외5', kind: 'bible', name: '번역본 T', grp: '외국어', bytes: 112640, sha256: 'b20', license: '시험 근거', db_bytes: 225280 },
+    { id: 'code:원어번호1', kind: 'code', name: '번역본 U 원어 번호', grp: '원어', bytes: 51200, sha256: 'b21', license: '시험 근거', db_bytes: 102400 },
+    { id: 'code:원어번호2', kind: 'code', name: '번역본 V 원어 번호', grp: '원어', bytes: 56320, sha256: 'b22', license: '시험 근거', db_bytes: 112640 },
+    { id: 'code:원어번호3', kind: 'code', name: '번역본 W 원어 번호', grp: '원어', bytes: 61440, sha256: 'b23', license: '시험 근거', db_bytes: 122880 },
+    { id: 'code:원어번호4', kind: 'code', name: '번역본 X 원어 번호', grp: '원어', bytes: 46080, sha256: 'b24', license: '시험 근거', db_bytes: 92160 },
+    { id: 'lex:사전1', kind: 'lex', name: '사전 A', grp: '한글', bytes: 25600, sha256: 'b25', license: '시험 근거', db_bytes: 51200 },
+    { id: 'lex:사전2', kind: 'lex', name: '사전 B', grp: '원어', bytes: 30720, sha256: 'b26', license: '시험 근거', db_bytes: 61440 },
+    { id: 'comm:주석1', kind: 'comm', name: '주석 시리즈 A', grp: '주석', bytes: 307200, sha256: 'b27', license: '시험 근거', db_bytes: 614400 },
+    { id: 'comm:주석2', kind: 'comm', name: '주석 시리즈 B', grp: '주석', bytes: 12800, sha256: 'b28', license: '시험 근거', db_bytes: 25600 },
+    { id: 'comm:주석3', kind: 'comm', name: '주석 시리즈 C', grp: '주석', bytes: 204800, sha256: 'b29', license: '시험 근거', db_bytes: 409600 },
+    { id: 'comm:주석4', kind: 'comm', name: '주석 시리즈 D', grp: '주석', bytes: 256000, sha256: 'b30', license: '시험 근거', db_bytes: 512000 },
+    { id: 'comm:주석5', kind: 'comm', name: '주석 시리즈 E', grp: '주석', bytes: 51200, sha256: 'b31', license: '시험 근거', db_bytes: 102400 },
+    { id: 'comm:주석6', kind: 'comm', name: '주석 시리즈 F', grp: '주석', bytes: 40960, sha256: 'b32', license: '시험 근거', db_bytes: 81920 },
   ];
 
   let mockInstalledFiles = ['bible-ko', 'orig', 'comm'];
   let mockItems = [
-    { id: 'bible:개역개정', kind: 'bible', name: '개역개정', grp: '한국어', sha256: 'a1', bytes: 102400, db_bytes: 204800, license: '시험 근거' },
+    { id: 'bible:한국1', kind: 'bible', name: '번역본 A', grp: '한국어', sha256: 'b1', bytes: 102400, db_bytes: 204800, license: '시험 근거' },
+    { id: 'comm:주석1', kind: 'comm', name: '주석 시리즈 A', grp: '주석', sha256: 'old-sha', bytes: 307200, db_bytes: 614400, license: '시험 근거' },
   ];
 
   function mockSources() { return [{
@@ -95,9 +123,9 @@
       case 'preview_source': {
         const url = args.url;
         if (url === FREE_URL) {
-          r = { layout: 'items', title: '기본 자료(저작권 자유)', origin: 'mock', updated: '시험일', note: '지어낸 항목 목록입니다.', links: [{ title: '추가 목록(시험)', url: 'mock://bundle-2' }], files: MOCK_FILES.slice(0, 4) };
+          r = { layout: 'items', title: '기본 자료(저작권 자유)', origin: 'mock', updated: '시험일', note: '지어낸 항목 목록입니다.', links: [{ title: '추가 목록(시험)', url: 'mock://bundle-2' }], files: MOCK_FILES };
         } else if (url === 'mock://bundle-2') {
-          r = { layout: 'items', title: '추가 목록', origin: 'mock', updated: '시험일', note: '', links: [], files: MOCK_FILES.slice(4) };
+          r = { layout: 'items', title: '추가 목록', origin: 'mock', updated: '시험일', note: '', links: [], files: MOCK_FILES.slice(4, 8) };
         } else {
           r = { layout: '', title: '시험 자료', origin: 'mock', updated: '시험일', note: '', links: [], files: [
             { id: 'bible-ko', bytes: 102400, db_bytes: 204800 },
