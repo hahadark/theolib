@@ -51,4 +51,7 @@ progress{width:260px}
 table.items{border-collapse:collapse;width:100%}
 table.items th{cursor:pointer;text-align:left;background:#f3f3f3;position:sticky;top:0}
 table.items td,table.items th{padding:2px 8px;border-bottom:1px solid #eee}
+table.items tr.hidden-row{opacity:.45}
+table.items tr.hidden-row:hover{opacity:.8}
+.hide-toggle{font-size:11px;padding:0 6px;margin-right:6px;border:1px solid var(--line);border-radius:4px;background:none;color:var(--mut);cursor:pointer}
 .itemscroll{max-height:420px;overflow:auto;border:1px solid #ddd}

@@ -55,6 +55,27 @@ const msg = (t, err) => { const m = $('#srcmsg'); m.textContent = t; m.className
 async function run(f) { try { await f(); } catch (x) { msg(String(x), true); } finally { $('#progress').hidden = true; } }
 $('#srcshow').onclick = () => { const i = $('#srcurl'); i.type = i.type === 'password' ? 'text' : 'password'; };
 const KIND = { bible: '번역본', code: '원어 번호 본문', lex: '사전', comm: '주석' };
+
+// ---- 항목 숨기기 (화면에서만 끔, 지우지 않고 localStorage theolib.ui.v1 에 키만 저장)
+// 숨김 키는 코어와 맞춘다: v:<번역본/원어 id>, d:<사전 id>, s:<주석 시리즈 id>
+function hiddenList() {
+  const arr = (window.UIStore && window.UIStore.read().hiddenItems) || [];
+  return Array.isArray(arr) ? arr : [];
+}
+function isHidden(key) { return hiddenList().includes(key); }
+function setHidden(key, on) {
+  const set = new Set(hiddenList());
+  if (on) set.add(key); else set.delete(key);
+  window.UIStore.write({ hiddenItems: [...set] });
+}
+// 항목(ItemRec) → 숨김 키. name 이 번역본 id·사전 id·시리즈 id 역할을 한다.
+function itemHiddenKey(f) {
+  if (!f) return null;
+  if (f.kind === 'bible' || f.kind === 'code') return 'v:' + f.name;
+  if (f.kind === 'lex') return 'd:' + f.name;
+  if (f.kind === 'comm') return 's:' + f.name;
+  return null;
+}
 const KORD = { bible: 0, code: 1, lex: 2, comm: 3 };
 const GORD = { '한국어': 0, '영어': 1, '원어': 2, '외국어': 3 };
 const DEFAULT_NAMES = ['개역개정', '개역한글', '새번역', 'ESV', 'NIV2011', 'KJV1769'];
@@ -168,12 +189,22 @@ function drawItems() {
   const gbtn = groups.map((g) => { const [k, gr] = g.split('|'); return `<span class="gsel">${esc(KIND[k] || k)}·${esc(gr)} <a href="#" data-g="${esc(g)}" data-on="1">모두 선택</a>/<a href="#" data-g="${esc(g)}" data-on="0">해제</a></span>`; }).join(' ');
   const chosen = files.filter((f) => sel.has(f.id));
   const total = chosen.reduce((a, f) => a + f.bytes, 0);
+  const rowHtml = (f) => {
+    const key = itemHiddenKey(f);
+    const hid = key && isHidden(key);
+    const tog = key ? `<button class="hide-toggle" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '보이기' : '숨기기'}</button>` : '';
+    return `<tr data-hk="${esc(key || '')}" class="${hid ? 'hidden-row' : ''}"><td><input type="checkbox" data-id="${esc(f.id)}" ${sel.has(f.id) ? 'checked' : ''}></td><td>${tog} ${esc(f.name)}</td><td>${esc(KIND[f.kind] || f.kind)}·${itemState.local && f.kind === 'bible' ? `<select data-grp="${esc(f.id)}">${['한국어', '영어', '원어', '외국어'].map((g) => `<option ${g === f.grp ? 'selected' : ''}>${g}</option>`).join('')}</select>` : esc(f.grp)}</td><td>${fmtB(f.bytes)}</td><td>${statusOf(f)}</td><td class="muted">${esc(f.license || '')}</td></tr>`;
+  };
   $('#itemsbox').innerHTML = `<div class="bar"><input id="itq" placeholder="이름·분류·근거로 거르기" size="30" value="${esc(q)}"> <span class="muted">${rows.length}/${files.length}항목</span></div><div class="muted">${gbtn}</div>
-  <div class="itemscroll"><table class="items"><tr><th data-s="sel">선택</th><th data-s="name">이름</th><th data-s="grp">분류</th><th data-s="bytes">크기</th><th data-s="status">상태</th><th>근거</th></tr>${rows.map((f) => `<tr><td><input type="checkbox" data-id="${esc(f.id)}" ${sel.has(f.id) ? 'checked' : ''}></td><td>${esc(f.name)}</td><td>${esc(KIND[f.kind] || f.kind)}·${itemState.local && f.kind === 'bible' ? `<select data-grp="${esc(f.id)}">${['한국어', '영어', '원어', '외국어'].map((g) => `<option ${g === f.grp ? 'selected' : ''}>${g}</option>`).join('')}</select>` : esc(f.grp)}</td><td>${fmtB(f.bytes)}</td><td>${statusOf(f)}</td><td class="muted">${esc(f.license || '')}</td></tr>`).join('')}</table></div>
+  <div class="itemscroll"><table class="items"><tr><th data-s="sel">선택</th><th data-s="name">이름</th><th data-s="grp">분류</th><th data-s="bytes">크기</th><th data-s="status">상태</th><th>근거</th></tr>${rows.map(rowHtml).join('')}</table></div>
   <div class="bar"><b id="itsum">${chosen.length}개 선택 · 받는 용량 ${fmtB(total)}</b> <button id="itgo">선택한 항목 받기</button> <button id="itdel">선택한 항목 삭제(받은 것만)</button></div>`;
   const qi = $('#itq'); qi.oninput = () => { itemState.q = qi.value; drawItems(); const n = $('#itq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
   $('#itemsbox').querySelectorAll('th[data-s]').forEach((th) => (th.onclick = () => { if (itemState.sort === th.dataset.s) itemState.dir *= -1; else { itemState.sort = th.dataset.s; itemState.dir = 1; } drawItems(); }));
   $('#itemsbox').querySelectorAll('input[data-id]').forEach((c) => (c.onchange = () => { c.checked ? sel.add(c.dataset.id) : sel.delete(c.dataset.id); drawItems(); }));
+  $('#itemsbox').querySelectorAll('.hide-toggle').forEach((b) => (b.onclick = () => {
+    setHidden(b.dataset.key, b.dataset.on === '1');
+    drawItems();
+  }));
   $('#itemsbox').querySelectorAll('a[data-g]').forEach((a) => (a.onclick = (ev) => { ev.preventDefault(); for (const f of files) if (f.kind + '|' + f.grp === a.dataset.g) a.dataset.on === '1' ? sel.add(f.id) : sel.delete(f.id); drawItems(); }));
   $('#itemsbox').querySelectorAll('select[data-grp]').forEach((s) => (s.onchange = () => { const f = files.find((x) => x.id === s.dataset.grp); if (f) f.grp = s.value; }));
   if (itemState.local) return drawLocalButtons();
@@ -223,7 +254,7 @@ async function boot() {
   const has = inst.some((i) => i.startsWith('bible') || i.startsWith('orig'));
   if (!has) { state.versions = []; $('#vers').innerHTML = ''; $('#panes').innerHTML = '<p class="muted" style="padding:12px 16px">성경 자료가 없습니다. 「자료 출처」에서 주소를 넣고 받으세요.</p>'; showView('sources'); return; }
   state.books = await invoke('books');
-  state.versions = (await invoke('versions')).filter((v) => v.kind !== 'parse');
+  state.versions = (await invoke('versions')).filter((v) => v.kind !== 'parse' && !isHidden('v:' + v.id));
   state.vers = state.vers.filter((id) => state.versions.some((v) => v.id === id));
   if (!state.vers.length) { const t = state.versions.filter((v) => v.kind === 'text'); const k = t.find((v) => v.id === '개역개정') || t[0] || state.versions[0]; state.vers = k ? [k.id] : []; }
   $('#book').innerHTML = state.books.map((b) => `<option value="${b.n}">${esc(b.name)}</option>`).join('');
@@ -312,12 +343,15 @@ function renderComm(panel) {
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
   cached(loadNotes, ref.bk, ref.ch, ref.v).then((notes) => {
     if (panel !== panelByIdLive(panel.id)) return;
-    const comms = [...new Set(notes.map((n) => n.comm_name))];
+    // 이름 → 주석 코드 매핑 후, 숨긴 시리즈(코드 기준)를 걸러낸다.
+    const commCode = new Map();
+    for (const n of notes) if (!commCode.has(n.comm_name)) commCode.set(n.comm_name, n.comm);
+    const comms = [...commCode.keys()].filter((name) => !isHidden('s:' + commCode.get(name)));
     let cur = panel.settings.series;
     if (!comms.includes(cur)) cur = comms[0] || null;
     panel.settings.series = cur; panel.saveSettings();
     const tabs = comms.length ? comms.map((c) => `<button class="${c === cur ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('') : '';
-    const body = notes.filter((n) => n.comm_name === cur).map((n) =>
+    const body = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm)).map((n) =>
       `<div class="note"><h4>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`).join('') || '<span class="muted">이 자리의 주석이 없습니다.</span>';
     el.innerHTML = tabs ? `<div class="subtabs">${tabs}</div><div class="notes">${body}</div>` : `<div class="notes">${body}</div>`;
     const tb = el.querySelector('.subtabs');
@@ -410,7 +444,7 @@ function panelTitle(panel) {
 async function showLex(code, panel) {
   panel.settings.code = code; panel.saveSettings();
   const el = panel.body;
-  const es = await invoke('lex', { code }).catch(() => []);
+  const es = (await invoke('lex', { code }).catch(() => [])).filter((e) => !isHidden('d:' + e.dict));
   if (panel !== panelByIdLive(panel.id)) return;
   el.innerHTML = es.length ? es.map((e) => `<div class="lex"><b>${esc(e.code)} ${esc(e.head)}</b> <span class="tag">${esc(e.dict === 'HebGrkKo' ? '한글 원어사전' : e.dict === 'HebGrkEn' ? '영어 원어사전' : e.dict)}</span><div>${e.html}</div></div>`).join('') : `<div class="lex muted">${esc(code)}: 사전에 이 낱말이 없습니다.</div>`;
 }
