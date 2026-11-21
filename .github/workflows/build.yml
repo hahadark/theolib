@@ -80,6 +80,8 @@ jobs:
 
   build-macos:
     name: 빌드 (macOS)
+    # 맥 빌드는 당분간 하지 않는다(사용자 지시 2026-11-22). 다시 켤 때 아래 if 줄을 지우고 release 의 needs 에 build-macos 를 되돌린다.
+    if: false
     runs-on: macos-latest
     permissions:
       contents: write
@@ -133,7 +135,7 @@ jobs:
   release:
     name: 릴리스 (latest.json 포함)
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-windows, build-macos]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
