@@ -95,7 +95,7 @@ function itemHiddenKey(f) {
   if (!f) return null;
   if (f.kind === 'bible' || f.kind === 'code') return 'v:' + f.name;
   if (f.kind === 'lex') return 'd:' + f.name;
-  if (f.kind === 'comm') return 's:' + f.name;
+  if (f.kind === 'comm') return 's:' + (f.series || f.name);
   return null;
 }
 const KORD = { bible: 0, code: 1, lex: 2, comm: 3 };
@@ -239,8 +239,8 @@ function groupPanels() {
   }
   return panels;
 }
-function tileHtml(f) {
-  const key = itemHiddenKey(f);
+function tileHtml(f, inSeries) {
+  const key = inSeries ? null : itemHiddenKey(f);
   const hid = key && isHidden(key);
   const on = itemState.sel.has(f.id);
   const st = statusOf(f);
@@ -251,11 +251,54 @@ function tileHtml(f) {
     : '';
   const grp = f.kind === 'bible' && !grpSel ? `<span class="it-grp muted">${esc(f.grp)}</span>` : '';
   return `<button type="button" class="it-tile${on ? ' on' : ''}${hid ? ' hidden' : ''}" data-id="${esc(f.id)}" data-kind="${esc(f.kind)}">
-    <span class="it-tile-top"><span class="it-name">${esc(f.name)}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '👁 보임' : '👁 숨김'}</span>` : ''}</span>
+    <span class="it-tile-top"><span class="it-name">${esc(inSeries ? f.book : f.name)}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '👁 보임' : '👁 숨김'}</span>` : ''}</span>
     <span class="it-tile-meta">${grpSel}${grp}${stTxt ? `<span class="it-status ${stCls}">${stTxt}</span>` : ''}<span class="it-bytes muted">${fmtB(f.bytes)}</span></span>
     ${f.license ? `<span class="it-license muted">${esc(f.license)}</span>` : ''}
     <span class="it-progress"></span>
   </button>`;
+}
+// ── 책별로 나눠 받는 주석 시리즈: 시리즈 타일 하나 + 펼치면 구약/신약 책 타일 ──
+const isSplit = (f) => f.kind === 'comm' && !!f.series && f.bk != null;
+function idsOf(id) {
+  if (!String(id).startsWith('series:')) return [id];
+  const sid = id.slice(7);
+  return visibleFiles().filter((f) => isSplit(f) && f.series === sid).map((f) => f.id);
+}
+const allSelected = (ids) => ids.length > 0 && ids.every((x) => itemState.sel.has(x));
+function seriesHtml(sid, vis) {
+  const all = itemState.files.filter((f) => isSplit(f) && f.series === sid);
+  const head = all[0];
+  const name = head.series_name || String(head.name).split(' · ')[0];
+  const ids = vis.map((f) => f.id);
+  const nOn = vis.filter((f) => itemState.sel.has(f.id)).length;
+  const onBytes = vis.filter((f) => itemState.sel.has(f.id)).reduce((a, f) => a + f.bytes, 0);
+  const st = all.map(statusOf), have = st.filter((s) => s !== '안 받음').length;
+  const stTxt = !have ? '' : st.some((s) => s === '새 판 있음') ? '새 판 있음' : have === all.length ? '✓ 받음' : `${have}책 받음`;
+  const stCls = stTxt === '새 판 있음' ? 'st-new' : stTxt ? 'st-have' : '';
+  const open = !!(itemState.expanded && itemState.expanded[sid]);
+  const key = itemHiddenKey(head), hid = key && isHidden(key);
+  const tileOn = allSelected(ids);
+  const total = head.series_bytes != null ? head.series_bytes : all.reduce((a, f) => a + f.bytes, 0);
+  let h = `<button type="button" class="it-tile it-series${tileOn ? ' on' : ''}${hid ? ' hidden' : ''}" data-id="series:${esc(sid)}" data-kind="comm">
+    <span class="it-tile-top"><span class="it-name">${esc(name)}</span><span class="it-sexp" role="button" data-sid="${esc(sid)}" title="책별로 펼치기·접기">${open ? '▾ 책 접기' : '▸ 책 고르기'}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '👁 보임' : '👁 숨김'}</span>` : ''}</span>
+    <span class="it-tile-meta">${all.length}/66책 · 고른 ${nOn}책<span class="it-bytes muted">${fmtB(onBytes)} / ${fmtB(total)}</span>${stTxt ? `<span class="it-status ${stCls}">${stTxt}</span>` : ''}</span>
+    <span class="it-progress"></span>
+  </button>`;
+  if (open) {
+    const sec = (lab, arr0) => { const arr = [...arr0].sort((x, y) => x.bk - y.bk); return arr.length ? `<div class="it-sub it-bookset"><div class="it-subh">${lab} <span class="muted">${arr.length}</span></div><div class="it-tiles">${arr.map((f) => tileHtml(f, true)).join('')}</div></div>` : ''; };
+    h += `<div class="it-books" style="grid-column:1/-1">${sec('구약', vis.filter((f) => f.bk >= 1 && f.bk <= 39))}${sec('신약', vis.filter((f) => f.bk >= 40))}${sec('공통', vis.filter((f) => f.bk < 1))}</div>`;
+  }
+  return h;
+}
+function tilesHtml(items) {
+  const out = [], seen = new Set();
+  for (const f of items) {
+    if (!isSplit(f)) { out.push(tileHtml(f)); continue; }
+    if (seen.has(f.series)) continue;
+    seen.add(f.series);
+    out.push(seriesHtml(f.series, items.filter((x) => isSplit(x) && x.series === f.series)));
+  }
+  return out.join('');
 }
 function drawItems() {
   const { files, sel } = itemState;
@@ -281,8 +324,8 @@ function drawItems() {
     const allOn = m === n;
     let inner = '';
     for (const p of parts) {
-      if (p.grp) inner += `<div class="it-sub" data-kind="${kind}"><div class="it-subh">${esc(p.grp)} <span class="muted">${p.items.length}</span></div><div class="it-tiles">${p.items.map(tileHtml).join('')}</div></div>`;
-      else inner += `<div class="it-tiles" data-kind="${kind}">${p.items.map(tileHtml).join('')}</div>`;
+      if (p.grp) inner += `<div class="it-sub" data-kind="${kind}"><div class="it-subh">${esc(p.grp)} <span class="muted">${p.items.length}</span></div><div class="it-tiles">${tilesHtml(p.items)}</div></div>`;
+      else inner += `<div class="it-tiles" data-kind="${kind}">${tilesHtml(p.items)}</div>`;
     }
     body += `<section class="it-card" data-kind="${kind}" tabindex="0">
       <header class="it-head">
@@ -339,12 +382,14 @@ function bindTiles() {
   box._bound = true;
   box.addEventListener('click', (ev) => {
     const t = ev.target.closest('.it-tile');
+    const ex = ev.target.closest('.it-sexp');
+    if (ex) { itemState.expanded = itemState.expanded || {}; itemState.expanded[ex.dataset.sid] = !itemState.expanded[ex.dataset.sid]; drawItems(); return; }
     if (t && !ev.target.closest('.it-hide') && !ev.target.closest('.it-grp')) {
       const id = t.dataset.id, sel = itemState.sel;
       if (ev.shiftKey && itemState.anchorId != null && itemState.anchorId !== id) {
         const a = itemFrontier.indexOf(itemState.anchorId), b = itemFrontier.indexOf(id);
-        if (a >= 0 && b >= 0) { const lo = Math.min(a, b), hi = Math.max(a, b), on = sel.has(itemState.anchorId); for (let i = lo; i <= hi; i++) on ? sel.delete(itemFrontier[i]) : sel.add(itemFrontier[i]); }
-      } else if (!ev.shiftKey) { sel.has(id) ? sel.delete(id) : sel.add(id); }
+        if (a >= 0 && b >= 0) { const lo = Math.min(a, b), hi = Math.max(a, b), on = allSelected(idsOf(itemState.anchorId)); for (let i = lo; i <= hi; i++) for (const x of idsOf(itemFrontier[i])) on ? sel.delete(x) : sel.add(x); }
+      } else if (!ev.shiftKey) { const ids = idsOf(id), on = allSelected(ids); for (const x of ids) on ? sel.delete(x) : sel.add(x); }
       itemState.anchorId = id;
       drawItems();
     }
@@ -389,12 +434,10 @@ function bindTiles() {
     box.querySelectorAll('.it-tile').forEach((t) => {
       const tr = t.getBoundingClientRect();
       const hit = !(tr.right < rx1 || tr.left > rx2 || tr.bottom < ry1 || tr.top > ry2);
-      const id = t.dataset.id;
-      hitIds.add(id);
-      const on = drag.add ? hit : (itemState.sel.has(id) && !hit);
-      if (drag.add) { if (hit) itemState.sel.add(id); }
-      else { if (hit) itemState.sel.delete(id); }
-      t.classList.toggle('on', itemState.sel.has(id));
+      const ids = idsOf(t.dataset.id);
+      hitIds.add(t.dataset.id);
+      if (hit) for (const id of ids) drag.add ? itemState.sel.add(id) : itemState.sel.delete(id);
+      t.classList.toggle('on', allSelected(ids));
     });
     // 요약줄 즉시 갱신
     const c = itemState.files.filter((f) => itemState.sel.has(f.id));
@@ -654,12 +697,16 @@ function renderComm(panel) {
   const qk = commQuickKey(panel, ref);
   if (panel._commQk === qk && el.querySelector('.comm-wrap')) { if (whole) commScroll(panel, ref); return; }
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
-  (whole ? cached(loadNotesChapter, ref.bk, ref.ch) : cached(loadNotes, ref.bk, ref.ch, ref.v)).then((notes) => {
+  Promise.all([whole ? cached(loadNotesChapter, ref.bk, ref.ch) : cached(loadNotes, ref.bk, ref.ch, ref.v), invoke('comm_series').catch(() => [])]).then(([notes, splitInfo]) => {
     if (panel !== panelByIdLive(panel.id)) return;
     if (commQuickKey(panel, panelRef(panel)) !== qk) return; // 그 사이 설정이 바뀌었으면 버린다
     // 이름 → 주석 코드 매핑 후, 숨긴 시리즈(코드 기준)를 걸러낸다.
     const commCode = new Map();
     for (const n of notes) if (!commCode.has(n.comm_name)) commCode.set(n.comm_name, n.comm);
+    // 책별로 나눠 받는 시리즈: 이 책을 아직 안 받았어도 탭은 두고 안내 문구를 보여 준다.
+    const missing = new Map();
+    for (const s of splitInfo || []) if (s.books.includes(ref.bk) && !s.have.includes(ref.bk)) { missing.set(s.name, s); if (!commCode.has(s.name)) commCode.set(s.name, s.id); }
+    const missMsg = (name) => { const last = [...name].pop().charCodeAt(0); const josa = last >= 0xAC00 && last <= 0xD7A3 && (last - 0xAC00) % 28 ? '은' : '는'; return `<p class="muted comm-miss">이 책의 ${esc(name)}${josa} 받지 않았습니다(자료 출처에서 받기).</p>`; };
     const comms = [...commCode.keys()].filter((name) => !isHidden('s:' + commCode.get(name)));
     let cur = panel.settings.series;
     if (!comms.includes(cur)) cur = comms[0] || null;
@@ -676,7 +723,7 @@ function renderComm(panel) {
       body = seriesRows.map((name) => {
         const items = inVerseOrder(notes.filter((n) => n.comm_name === name && !isHidden('s:' + n.comm)));
         const head = multi ? `<div class="csec">${esc(name)}</div>` : '';
-        return head + (items.length ? items.map(commItemHtml).join('') : '<p class="muted">이 장의 주석이 없습니다.</p>');
+        return head + (items.length ? items.map(commItemHtml).join('') : missing.has(name) ? missMsg(name) : '<p class="muted">이 장의 주석이 없습니다.</p>');
       }).join('');
     } else {
       const mine = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm));
@@ -684,7 +731,7 @@ function renderComm(panel) {
       body = rep ? noteHtml(rep, true) : '';
       if (others.length) body += `<details class="note-more"><summary><span class="mo">이 절을 포함한 다른 해설 ${others.length}개</span><span class="mo-sub">${esc(inVerseOrder(others).map(noteRange).join(' · '))}</span></summary>${others.map((n) => noteHtml(n)).join('')}</details>`;
       if (overviews.length) body += `<details class="note-more"><summary><span class="mo">여러 장에 걸친 큰 단락 개요 ${overviews.length}개</span><span class="mo-sub">${esc(inVerseOrder(overviews).map(noteRange).join(' · '))}</span></summary>${overviews.map((n) => noteHtml(n)).join('')}</details>`;
-      if (!body) body = '<span class="muted">이 자리의 주석이 없습니다.</span>';
+      if (!body) body = missing.has(cur) ? missMsg(cur) : '<span class="muted">이 자리의 주석이 없습니다.</span>';
     }
     if (!body) body = '<p class="muted">이 장의 주석이 없습니다.</p>';
     el.innerHTML = `<div class="comm-wrap">${top}<div class="notes${whole ? ' comm-list' : ''}">${body}</div></div>`;

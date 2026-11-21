@@ -203,6 +203,7 @@
         else { const k = args.ch * 1000 + args.v; r = NOTES.filter((n) => n.start_key <= k && n.end_key >= k).map((n) => ({ ...n })); }
         break;
       }
+      case 'comm_series': r = [{ id: '카리스종합주석', name: '카리스 종합주석', books: [1,2,3,4,5,6,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66], have: [44] }]; break;
       case 'parse': r = PARSE; break;
       case 'lex': r = LEX[args.code] || []; break;
       case 'set_hidden': r = null; break;

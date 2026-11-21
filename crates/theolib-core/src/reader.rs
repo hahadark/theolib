@@ -79,6 +79,15 @@ pub struct Article {
     pub chars: i64,
 }
 
+/// 책별로 나눠 받는 주석 시리즈의 책 목록: 시리즈 전체 책(books)과 받은 책(have). 책 번호 0(공통)은 have 에만 있을 수 있다.
+#[derive(Serialize, Clone, Debug)]
+pub struct SeriesBooks {
+    pub id: String,
+    pub name: String,
+    pub books: Vec<i64>,
+    pub have: Vec<i64>,
+}
+
 pub struct Reader {
     home: Home,
     ids: Vec<String>,
@@ -212,6 +221,51 @@ impl Reader {
                     out.push(x);
                 }
             }
+        }
+        Ok(out)
+    }
+
+    /// 책별 항목으로 받는 주석 시리즈의 전체 책·받은 책. 숨긴 시리즈 제외. 통째로 받는 시리즈는 나오지 않는다.
+    pub fn comm_series(&self) -> Result<Vec<SeriesBooks>> {
+        let st = source::load_state(&self.home, SID)?;
+        let mut order: Vec<String> = vec![];
+        let mut have: std::collections::HashMap<String, Vec<i64>> = Default::default();
+        for r in st.items.iter().filter(|r| r.kind == "comm") {
+            if let Some(bk) = source::item_bk(&r.id) {
+                let s = source::item_key(&r.id).to_string();
+                if !order.contains(&s) {
+                    order.push(s.clone());
+                }
+                have.entry(s).or_default().push(bk);
+            }
+        }
+        let mut out = vec![];
+        for s in order {
+            if self.is_hidden(&format!("s:{s}")) {
+                continue;
+            }
+            let (mut name, mut books) = (s.clone(), vec![]);
+            for f in self.files("comm") {
+                let c = self.db(&f)?;
+                if let Ok((n, cov)) = c.query_row("SELECT coalesce(name,id),coalesce(coverage,'{}') FROM series WHERE id=?", [&s], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+                    name = n;
+                    if let Ok(serde_json::Value::Object(m)) = serde_json::from_str::<serde_json::Value>(&cov) {
+                        books = m.keys().filter_map(|k| k.parse::<i64>().ok()).collect();
+                    }
+                    break;
+                }
+            }
+            let mut h = have.remove(&s).unwrap_or_default();
+            h.sort();
+            h.dedup();
+            for b in &h {
+                if *b > 0 && !books.contains(b) {
+                    books.push(*b);
+                }
+            }
+            books.sort();
+            books.dedup();
+            out.push(SeriesBooks { id: s, name, books, have: h });
         }
         Ok(out)
     }

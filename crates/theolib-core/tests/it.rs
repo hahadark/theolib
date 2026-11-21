@@ -540,10 +540,94 @@ fn items_full_all_timing() {
     let b = search::search(&home, "총독", "bible", &[s("개역개정")], 100).unwrap();
     assert_eq!(b.len(), 56);
     // 주석 1종 삭제 → 검색에서 빠짐
-    source::remove_items(&home, &[s("comm:카리스종합주석")]).unwrap();
+    let charis: Vec<String> = ids.iter().filter(|i| i.starts_with("comm:카리스종합주석:")).cloned().collect();
+    assert_eq!(charis.len(), 33);
+    source::remove_items(&home, &charis).unwrap();
     search::build_index(&home, &mut |_, _, _| {}).unwrap();
     let c = search::search(&home, "뉴산토스", "comm", &[], 20).unwrap();
     assert!(c.iter().all(|h| h.src != "카리스종합주석"));
+}
+
+#[test]
+fn comm_split_books_merge() {
+    let dir = items_dir("items-full");
+    if !dir.join("theolib.json").exists() {
+        return;
+    }
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let srv = t.path().join("srv");
+    std::fs::create_dir_all(&srv).unwrap();
+    let txt = std::fs::read_to_string(dir.join("theolib.json")).unwrap();
+    let mut j: serde_json::Value = serde_json::from_str(&txt).unwrap();
+    let all = j["files"].as_array().unwrap().clone();
+    let by = |id: &str| all.iter().find(|f| f["id"] == id).unwrap().clone();
+    let (acts, rom, g1) = (by("comm:카리스종합주석:44"), by("comm:카리스종합주석:45"), by("comm:카리스종합주석:1"));
+    // 선언 구조: 카리스 33책, 매튜헨리 66책, 책별 칸
+    let n_of = |sid: &str| all.iter().filter(|f| f["series"] == sid).count();
+    assert_eq!((n_of("카리스종합주석"), n_of("매튜헨리")), (33, 66));
+    assert!(acts["series_bytes"].as_u64().unwrap() > 80_000_000 && acts["book"] == "사도행전" && acts["bk"] == 44 && acts["default"] == true);
+    let sizes: Vec<u64> = all.iter().filter(|f| f["series"] == "카리스종합주석").map(|f| f["bytes"].as_u64().unwrap()).collect();
+    println!("카리스 책별 항목 33개, 크기 {}~{} 바이트, 합 {}", sizes.iter().min().unwrap(), sizes.iter().max().unwrap(), sizes.iter().sum::<u64>());
+    for f in [&acts, &rom, &g1] {
+        let u = f["url"].as_str().unwrap();
+        std::fs::copy(dir.join(u), srv.join(u)).unwrap();
+    }
+    j["files"] = serde_json::json!([acts.clone(), rom.clone(), g1.clone()]);
+    std::fs::write(srv.join("theolib.json"), serde_json::to_vec(&j).unwrap()).unwrap();
+    let cfg = Arc::new(Cfg::default());
+    let url = serve(srv.clone(), cfg.clone());
+    let home = Home::at(t.path().join("home"));
+    // 사도행전만 받기
+    source::add_items(&home, &url, &[s("comm:카리스종합주석:44")], &mut |_, _, _| {}).unwrap();
+    println!("사도행전 항목만 받은 크기 {} 바이트(선언 {})", cfg.sent.load(std::sync::atomic::Ordering::SeqCst), acts["bytes"]);
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    let ns = r.comm_for(44, 24, None).unwrap();
+    assert!(ns.len() > 5 && ns.iter().all(|n| n.comm == "카리스종합주석"));
+    println!("행 24장 장 전체 주석 {}건", ns.len());
+    assert!(r.comm_for(45, 1, None).unwrap().is_empty());
+    let ss = r.comm_series().unwrap();
+    assert_eq!(ss.len(), 1);
+    assert_eq!(ss[0].id, "카리스종합주석");
+    assert_eq!(ss[0].books.len(), 33);
+    assert_eq!(ss[0].have, vec![44]);
+    assert!(ss[0].books.contains(&45) && ss[0].books.contains(&1));
+    let c = search::search(&home, "총독", "comm", &[], 50).unwrap();
+    assert!(!c.is_empty() && c.iter().all(|h| h.src == "카리스종합주석" && h.bk == 44));
+    // 로마서 추가: 합쳐서 한 시리즈
+    source::add_items(&home, &url, &[s("comm:카리스종합주석:45")], &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    assert!(!r.comm_for(45, 1, None).unwrap().is_empty() && !r.comm_for(44, 24, None).unwrap().is_empty());
+    assert_eq!(r.comm_names().unwrap().len(), 1);
+    assert_eq!(r.comm_series().unwrap()[0].have, vec![44, 45]);
+    // 사도행전 삭제 → 그 책만 빠짐
+    source::remove_items(&home, &[s("comm:카리스종합주석:44")]).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    assert!(r.comm_for(44, 24, None).unwrap().is_empty());
+    assert!(!r.comm_for(45, 1, None).unwrap().is_empty());
+    assert_eq!(r.comm_series().unwrap()[0].have, vec![45]);
+    assert!(search::search(&home, "총독", "comm", &[], 50).unwrap().iter().all(|h| h.bk != 44));
+    // 갱신: 로마서 항목의 선언만 창세기 파일로 바꾸면 그 항목만 다시 받는다
+    source::add_items(&home, &url, &[s("comm:카리스종합주석:44")], &mut |_, _, _| {}).unwrap();
+    let mut j2 = j.clone();
+    for f in j2["files"].as_array_mut().unwrap() {
+        if f["id"] == "comm:카리스종합주석:45" {
+            for k in ["url", "bytes", "sha256", "db_bytes", "db_sha256"] {
+                f[k] = g1[k].clone();
+            }
+        }
+    }
+    std::fs::write(srv.join("theolib.json"), serde_json::to_vec(&j2).unwrap()).unwrap();
+    cfg.log.lock().unwrap().clear();
+    let up = source::sync(&home, &mut |_, _, _| {}).unwrap();
+    assert_eq!(up, vec![s("comm:카리스종합주석:45")]);
+    let gz: Vec<_> = cfg.log.lock().unwrap().iter().filter(|x| x.0.ends_with(".gz")).map(|x| x.0.clone()).collect();
+    println!("갱신 때 받은 항목 파일: {gz:?}");
+    assert_eq!(gz.len(), 1);
+    let r = Reader::open(&home).unwrap();
+    assert!(!r.comm_for(44, 24, None).unwrap().is_empty());
 }
 
 /// 자료 파일 샘플 폴더: THEOLIB_SAMPLES 환경변수(없으면 건너뜀). 본문은 기록하지 않는다.

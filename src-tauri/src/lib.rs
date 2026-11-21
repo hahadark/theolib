@@ -307,6 +307,15 @@ fn notes(bk: i64, ch: i64, v: Option<i64>) -> R<Vec<NoteOut>> {
 }
 
 #[tauri::command]
+fn comm_series() -> R<Vec<reader::SeriesBooks>> {
+    let r = rd()?;
+    if !r.has("comm") {
+        return Ok(vec![]);
+    }
+    r.comm_series().map_err(e)
+}
+
+#[tauri::command]
 fn parse(bk: i64, ch: i64, v: i64) -> R<Vec<reader::ParseWord>> {
     let r = rd()?;
     if !r.has("orig") {
@@ -383,12 +392,12 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, set_hidden, goto_ref, articles, article_body, selftest_report
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, goto_ref, articles, article_body, selftest_report
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, set_hidden, goto_ref, articles, article_body
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, goto_ref, articles, article_body
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");

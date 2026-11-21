@@ -60,6 +60,15 @@ pub struct FileDecl {
     /// 기본 체크 힌트(크기 기준)
     #[serde(default)]
     pub default: Option<bool>,
+    /// 책별로 쪼갠 주석 항목(`comm:<시리즈>:<bk>`)의 시리즈 id·책 번호(0=공통)·책 이름·시리즈 전체 크기
+    #[serde(default)]
+    pub series: String,
+    #[serde(default)]
+    pub bk: Option<i64>,
+    #[serde(default)]
+    pub book: String,
+    #[serde(default)]
+    pub series_bytes: Option<u64>,
 }
 
 /// 로컬 통합 DB에 넣은 항목 한 개의 기록.
@@ -118,7 +127,30 @@ pub fn item_pack(kind: &str) -> Option<&'static str> {
 
 /// 항목 id(`bible:개역개정`)에서 DB 안의 키(번역본 id·사전 id·시리즈 id)
 pub fn item_key(id: &str) -> &str {
-    id.split_once(':').map(|x| x.1).unwrap_or(id)
+    let k = id.split_once(':').map(|x| x.1).unwrap_or(id);
+    if id.starts_with("comm:") {
+        if let Some((s, _)) = split_book_key(k) {
+            return s;
+        }
+    }
+    k
+}
+
+/// `<시리즈>:<bk>` 꼴이면 (시리즈, bk). 책별 주석 항목의 키.
+pub fn split_book_key(k: &str) -> Option<(&str, i64)> {
+    let (s, n) = k.rsplit_once(':')?;
+    if s.is_empty() || n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some((s, n.parse().ok()?))
+}
+
+/// 항목 id 가 책별 주석 항목이면 책 번호(0=공통)
+pub fn item_bk(id: &str) -> Option<i64> {
+    if !id.starts_with("comm:") {
+        return None;
+    }
+    split_book_key(id.split_once(':')?.1).map(|x| x.1)
 }
 
 /// 묶음 id 접두어로 종류를 판단한다: bible / orig / comm
@@ -896,6 +928,19 @@ pub(crate) fn delete_rows(c: &Connection, kind: &str, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// 책별 주석 항목 하나의 행만 지운다. 시리즈 행은 다른 책 행이 남아 있으면 둔다.
+pub(crate) fn delete_comm_book(c: &Connection, series: &str, bk: i64) -> Result<()> {
+    c.execute("DELETE FROM note WHERE series=?1 AND coalesce(bk,0)=?2", (series, bk))?;
+    c.execute("DELETE FROM comm_verse WHERE comm=?1 AND coalesce(book,0)=?2", (series, bk))?;
+    // 소논문: 숫자 book_id(1~66)면 그 책, 아니면 공통(0)
+    c.execute("DELETE FROM article WHERE series=?1 AND (CASE WHEN book_id GLOB '[0-9]*' AND CAST(book_id AS INTEGER) BETWEEN 1 AND 66 THEN CAST(book_id AS INTEGER) ELSE 0 END)=?2", (series, bk))?;
+    let left: i64 = c.query_row("SELECT (SELECT count(*) FROM note WHERE series=?1)+(SELECT count(*) FROM article WHERE series=?1)+(SELECT count(*) FROM comm_verse WHERE comm=?1)", [series], |r| r.get(0))?;
+    if left == 0 {
+        c.execute("DELETE FROM series WHERE id=?", [series])?;
+    }
+    Ok(())
+}
+
 /// 받은 항목 DB(.part)의 행을 통합 DB에 한 트랜잭션으로 넣는다(같은 항목이 있으면 교체).
 fn merge_item(home: &Home, f: &FileDecl, item_db: &Path) -> Result<()> {
     let pack = item_pack(&f.kind).ok_or_else(|| anyhow::anyhow!("{}: 알 수 없는 항목 종류 {}", f.id, f.kind))?;
@@ -924,8 +969,15 @@ fn merge_item(home: &Home, f: &FileDecl, item_db: &Path) -> Result<()> {
             }
             _ => {
                 let ids: Vec<String> = c.prepare("SELECT id FROM it.series")?.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
-                for i in &ids {
-                    delete_rows(&c, "comm", i)?;
+                if let Some(bk) = item_bk(&f.id) {
+                    for i in &ids {
+                        delete_comm_book(&c, i, bk)?;
+                        c.execute("DELETE FROM series WHERE id=?", [i])?;
+                    }
+                } else {
+                    for i in &ids {
+                        delete_rows(&c, "comm", i)?;
+                    }
                 }
                 c.execute_batch(
                     "INSERT INTO series(id,name,kind,unit,types,ord,coverage,note) SELECT id,name,kind,unit,types,ord,coverage,note FROM it.series;
@@ -1014,7 +1066,10 @@ pub fn remove_items(home: &Home, ids: &[String]) -> Result<()> {
         let pack = item_pack(&r.kind).unwrap_or("bible-i");
         if home.db_path(SID, pack).exists() {
             let c = Connection::open(home.db_path(SID, pack))?;
-            delete_rows(&c, &r.kind, item_key(id))?;
+            match item_bk(id) {
+                Some(bk) => delete_comm_book(&c, item_key(id), bk)?,
+                None => delete_rows(&c, &r.kind, item_key(id))?,
+            }
         }
         let _ = fs::remove_file(fts_path(home, id));
         st.items.retain(|x| &x.id != id);

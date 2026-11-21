@@ -141,3 +141,7 @@ table.items tr.hidden-row:hover{opacity:.8}
   .versbox .vers { width: 88vw; max-width: 340px; right: 0; left: auto; }
   #goto { width: auto; }
 }
+/* 책별 주석 시리즈 타일(최소 스타일) */
+.it-sexp{font-size:12px;color:var(--acc);cursor:pointer;white-space:nowrap}
+.it-books{display:flex;flex-direction:column;gap:6px;min-width:0;padding:4px 0 6px 10px;border-left:2px solid var(--line)}
+.comm-miss{margin:8px 0;padding:8px 10px;border:1px dashed var(--line);border-radius:6px}
