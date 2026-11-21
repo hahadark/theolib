@@ -85,9 +85,8 @@ pub async fn check(app: &AppHandle, manual: bool) -> UpdateState {
 }
 
 async fn check_inner(app: &AppHandle, manual: bool) -> UpdateState {
-    let Some(tok) = token() else {
-        return if manual { state(app, "no_token", "", "자동 업데이트를 쓰려면 GitHub 읽기 전용 주소를 넣어 주세요.") } else { state(app, "none", "", "") };
-    };
+    // 공개 저장소면 토큰 없이 확인한다(비공개 저장소일 때만 토큰을 붙인다).
+    let tok = token();
     let quiet_err = |m: &str| if manual { state(app, "error", "", m) } else { state(app, "none", "", "") };
     let mut b = app.updater_builder();
     if let Some(u) = endpoint_override() {
@@ -96,9 +95,12 @@ async fn check_inner(app: &AppHandle, manual: bool) -> UpdateState {
             Err(_) => return quiet_err("확인 주소가 올바르지 않습니다."),
         };
     }
-    let b = match b.header("Authorization", format!("Bearer {tok}")) {
-        Ok(b) => b,
-        Err(_) => return quiet_err("토큰 형식이 올바르지 않습니다."),
+    let b = match tok {
+        Some(tok) => match b.header("Authorization", format!("Bearer {tok}")) {
+            Ok(b) => b,
+            Err(_) => return quiet_err("토큰 형식이 올바르지 않습니다."),
+        },
+        None => b,
     };
     let updater = match b.build() {
         Ok(u) => u,
