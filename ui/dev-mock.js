@@ -59,47 +59,73 @@
 
   const ARTICLES = [{ id: 1, series: '시험시리즈', src_name: '시험 출처', section: '신약', title: '시험 소논문 제목', kind: 'article', chars: 12 }];
 
-  // ---- 자료 출처(항목 목록)용 가짜 데이터
-  // 번역본 20종(분류 4종)·원어 번호 본문 4·사전 2·주석 6. 이름은 '번역본 A' 같은 가짜.
-  const MOCK_FILES = [
-    { id: 'bible:한국1', kind: 'bible', name: '번역본 A', grp: '한국어', bytes: 102400, sha256: 'b1', license: '시험 근거', db_bytes: 204800, default: 1 },
-    { id: 'bible:한국2', kind: 'bible', name: '번역본 B', grp: '한국어', bytes: 153600, sha256: 'b2', license: '시험 근거', db_bytes: 307200 },
-    { id: 'bible:한국3', kind: 'bible', name: '번역본 C', grp: '한국어', bytes: 204800, sha256: 'b3', license: '시험 근거', db_bytes: 409600 },
-    { id: 'bible:한국4', kind: 'bible', name: '번역본 D', grp: '한국어', bytes: 128000, sha256: 'b4', license: '시험 근거', db_bytes: 256000 },
-    { id: 'bible:한국5', kind: 'bible', name: '번역본 E', grp: '한국어', bytes: 89600, sha256: 'b5', license: '시험 근거', db_bytes: 179200 },
-    { id: 'bible:영1', kind: 'bible', name: '번역본 F', grp: '영어', bytes: 115200, sha256: 'b6', license: '시험 근거', db_bytes: 230400 },
-    { id: 'bible:영2', kind: 'bible', name: '번역본 G', grp: '영어', bytes: 140800, sha256: 'b7', license: '시험 근거', db_bytes: 281600 },
-    { id: 'bible:영3', kind: 'bible', name: '번역본 H', grp: '영어', bytes: 99840, sha256: 'b8', license: '시험 근거', db_bytes: 199680 },
-    { id: 'bible:영4', kind: 'bible', name: '번역본 I', grp: '영어', bytes: 125440, sha256: 'b9', license: '시험 근거', db_bytes: 250880 },
-    { id: 'bible:영5', kind: 'bible', name: '번역본 J', grp: '영어', bytes: 138240, sha256: 'b10', license: '시험 근거', db_bytes: 276480 },
-    { id: 'bible:원1', kind: 'bible', name: '번역본 K', grp: '원어', bytes: 76800, sha256: 'b11', license: '시험 근거', db_bytes: 153600 },
-    { id: 'bible:원2', kind: 'bible', name: '번역본 L', grp: '원어', bytes: 84480, sha256: 'b12', license: '시험 근거', db_bytes: 168960 },
-    { id: 'bible:원3', kind: 'bible', name: '번역본 M', grp: '원어', bytes: 92160, sha256: 'b13', license: '시험 근거', db_bytes: 184320 },
-    { id: 'bible:원4', kind: 'bible', name: '번역본 N', grp: '원어', bytes: 61440, sha256: 'b14', license: '시험 근거', db_bytes: 122880 },
-    { id: 'bible:원5', kind: 'bible', name: '번역본 O', grp: '원어', bytes: 69120, sha256: 'b15', license: '시험 근거', db_bytes: 138240 },
-    { id: 'bible:외1', kind: 'bible', name: '번역본 P', grp: '외국어', bytes: 107520, sha256: 'b16', license: '시험 근거', db_bytes: 215040 },
-    { id: 'bible:외2', kind: 'bible', name: '번역본 Q', grp: '외국어', bytes: 133120, sha256: 'b17', license: '시험 근거', db_bytes: 266240 },
-    { id: 'bible:외3', kind: 'bible', name: '번역본 R', grp: '외국어', bytes: 120320, sha256: 'b18', license: '시험 근거', db_bytes: 240640 },
-    { id: 'bible:외4', kind: 'bible', name: '번역본 S', grp: '외국어', bytes: 97280, sha256: 'b19', license: '시험 근거', db_bytes: 194560 },
-    { id: 'bible:외5', kind: 'bible', name: '번역본 T', grp: '외국어', bytes: 112640, sha256: 'b20', license: '시험 근거', db_bytes: 225280 },
-    { id: 'code:원어번호1', kind: 'code', name: '번역본 U 원어 번호', grp: '원어', bytes: 51200, sha256: 'b21', license: '시험 근거', db_bytes: 102400 },
-    { id: 'code:원어번호2', kind: 'code', name: '번역본 V 원어 번호', grp: '원어', bytes: 56320, sha256: 'b22', license: '시험 근거', db_bytes: 112640 },
-    { id: 'code:원어번호3', kind: 'code', name: '번역본 W 원어 번호', grp: '원어', bytes: 61440, sha256: 'b23', license: '시험 근거', db_bytes: 122880 },
-    { id: 'code:원어번호4', kind: 'code', name: '번역본 X 원어 번호', grp: '원어', bytes: 46080, sha256: 'b24', license: '시험 근거', db_bytes: 92160 },
-    { id: 'lex:사전1', kind: 'lex', name: '사전 A', grp: '한글', bytes: 25600, sha256: 'b25', license: '시험 근거', db_bytes: 51200 },
-    { id: 'lex:사전2', kind: 'lex', name: '사전 B', grp: '원어', bytes: 30720, sha256: 'b26', license: '시험 근거', db_bytes: 61440 },
-    { id: 'comm:주석1', kind: 'comm', name: '주석 시리즈 A', grp: '주석', bytes: 307200, sha256: 'b27', license: '시험 근거', db_bytes: 614400 },
-    { id: 'comm:주석2', kind: 'comm', name: '주석 시리즈 B', grp: '주석', bytes: 12800, sha256: 'b28', license: '시험 근거', db_bytes: 25600 },
-    { id: 'comm:주석3', kind: 'comm', name: '주석 시리즈 C', grp: '주석', bytes: 204800, sha256: 'b29', license: '시험 근거', db_bytes: 409600 },
-    { id: 'comm:주석4', kind: 'comm', name: '주석 시리즈 D', grp: '주석', bytes: 256000, sha256: 'b30', license: '시험 근거', db_bytes: 512000 },
-    { id: 'comm:주석5', kind: 'comm', name: '주석 시리즈 E', grp: '주석', bytes: 51200, sha256: 'b31', license: '시험 근거', db_bytes: 102400 },
-    { id: 'comm:주석6', kind: 'comm', name: '주석 시리즈 F', grp: '주석', bytes: 40960, sha256: 'b32', license: '시험 근거', db_bytes: 81920 },
-  ];
+  // ---- 자료 출처(항목 목록)용 가짜 데이터 (실제와 같은 규모: 총 191항목)
+  // 번역본 82(한국어 16·영어 31·원어 3·외국어 32) · 원어 번호 본문 4 · 사전 2 · 주석(작은 시리즈 4 + 책별 33책·66책).
+  // 이름은 전부 지어낸 가짜다(실제 성경·주석 본문은 없다).
+  function fakeBytes(seed) { return 80000 + ((Math.abs(seed) * 7919) % 90000); }
+  function genBible(grp, count) {
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      const bytes = fakeBytes(grp.length * 1000 + i);
+      const id = 'bible:' + grp + ':' + (i + 1);
+      // 기본 선택 힌트: 한국어·영어 앞 3종씩(대표 번역본 흉내)
+      const def = (grp === '한국어' && i < 3) || (grp === '영어' && i < 3) ? 1 : 0;
+      arr.push({ id, kind: 'bible', name: '가짜 번역본 ' + grp + ' ' + (i + 1), grp, bytes, sha256: id, license: '가짜 근거', db_bytes: Math.round(bytes * 2), default: def });
+    }
+    return arr;
+  }
+  function genCode(count) {
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      const bytes = fakeBytes(50000 + i);
+      arr.push({ id: 'code:원어번호:' + (i + 1), kind: 'code', name: '가짜 원어 번호 본문 ' + (i + 1), grp: '원어', bytes, sha256: 'code' + i, license: '가짜 근거', db_bytes: Math.round(bytes * 2) });
+    }
+    return arr;
+  }
+  function genLex(count) {
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      const bytes = 25000 + i * 5000;
+      arr.push({ id: 'lex:사전:' + (i + 1), kind: 'lex', name: '가짜 사전 ' + (i + 1), grp: i % 2 ? '원어' : '한글', bytes, sha256: 'lex' + i, license: '가짜 근거', db_bytes: Math.round(bytes * 2) });
+    }
+    return arr;
+  }
+  // 작은 주석 시리즈(책별로 나뉘지 않음): 각 1개 항목.
+  function genSmallSeries(count) {
+    const arr = [];
+    for (let i = 0; i < count; i++) {
+      const bytes = 100000 + i * 15000;
+      arr.push({ id: 'comm:가짜주석:' + (i + 1), kind: 'comm', name: '가짜 주석 ' + (i + 1), grp: '주석', bytes, sha256: 'comm' + i, license: '가짜 근거', db_bytes: Math.round(bytes * 2) });
+    }
+    return arr;
+  }
+  // 책별 주석 시리즈: 항목마다 series, bk, book, series_bytes 를 담는다.
+  function genBookSeries(sid, name, bkCount) {
+    const items = [];
+    let total = 0;
+    for (let bk = 1; bk <= bkCount; bk++) {
+      const bytes = 100000 + ((bk * 6151) % 2000000);
+      total += bytes;
+      items.push({ id: 'comm:' + sid + ':' + bk, kind: 'comm', name: name + ' · 가짜책 ' + bk, series: sid, series_name: name, bk, book: '가짜책 ' + bk, bytes, sha256: sid + bk, license: '가짜 근거', db_bytes: bytes * 2, series_bytes: 0 });
+    }
+    for (const it of items) it.series_bytes = total;
+    return items;
+  }
+  const MOCK_FILES = (function build() {
+    const out = [];
+    out.push(...genBible('한국어', 16), ...genBible('영어', 31), ...genBible('원어', 3), ...genBible('외국어', 32));
+    out.push(...genCode(4));
+    out.push(...genLex(2));
+    out.push(...genSmallSeries(4));
+    out.push(...genBookSeries('가짜책별33', '가짜 책별 주석 33', 33));
+    out.push(...genBookSeries('가짜책별66', '가짜 책별 주석 66', 66));
+    return out;
+  })();
 
   let mockInstalledFiles = ['bible-ko', 'orig', 'comm'];
   let mockItems = [
-    { id: 'bible:한국1', kind: 'bible', name: '번역본 A', grp: '한국어', sha256: 'b1', bytes: 102400, db_bytes: 204800, license: '시험 근거' },
-    { id: 'comm:주석1', kind: 'comm', name: '주석 시리즈 A', grp: '주석', sha256: 'old-sha', bytes: 307200, db_bytes: 614400, license: '시험 근거' },
+    { id: 'bible:한국어:1', kind: 'bible', name: '가짜 번역본 한국어 1', grp: '한국어', sha256: 'bible:한국어:1', bytes: 80000, db_bytes: 160000, license: '가짜 근거' },
+    { id: 'comm:가짜책별66:44', kind: 'comm', name: '가짜 책별 주석 66 · 가짜책 44', series: '가짜책별66', series_name: '가짜 책별 주석 66', bk: 44, book: '가짜책 44', sha256: 'old-sha', bytes: 100000, db_bytes: 200000, license: '가짜 근거' },
   ];
 
   function mockSources() { return [{
@@ -109,6 +135,18 @@
     sources: [{ origin: 'mock://시험', title: '시험 자료', files: [] }],
     items: mockItems,
   }]; }
+
+  // ---- 책갈피·메모·하이라이트 가짜 저장소(메모리). 코어 user.rs 와 같은 모양을 돌려준다.
+  let USER = { bookmarks: [], memos: [], highlights: {} }; // highlights: "bk:ch:v" -> color
+  let userSeq = 1;
+  function hlRows(bk, ch) {
+    const out = [];
+    for (const k in USER.highlights) {
+      const [b, c, v] = k.split(':').map(Number);
+      if (b === bk && c === ch) out.push({ id: 0, bk: b, ch: c, v, color: USER.highlights[k] });
+    }
+    return out.sort((a, b) => a.v - b.v);
+  }
 
   const FREE_URL = 'mock://free-bundle';
 
@@ -211,6 +249,49 @@
       case 'goto_ref': r = args.input && /\d/.test(args.input) ? [44, 24, 10] : null; break;
       case 'articles': r = ARTICLES; break;
       case 'article_body': r = '시험 소논문 본문입니다.<br>둘째 줄.'; break;
+
+      case 'user_list': {
+        // 코어와 같은 모양: 책갈피는 전부, 메모는 bk(및 ch>0 이면 ch)로 거르고, 하이라이트는 bk·ch 정확히.
+        r = {
+          bookmarks: USER.bookmarks.slice(),
+          memos: USER.memos.filter((x) => x.bk === args.bk && (args.ch === 0 || x.ch === args.ch)),
+          highlights: hlRows(args.bk, args.ch),
+        };
+        break;
+      }
+      case 'bookmark_add': {
+        const id = userSeq++;
+        USER.bookmarks.push({ id, bk: args.bk, ch: args.ch, v: args.v, label: args.label || '', created: '시험시각' });
+        r = id; break;
+      }
+      case 'bookmark_delete': {
+        const before = USER.bookmarks.length;
+        USER.bookmarks = USER.bookmarks.filter((x) => x.id !== args.id);
+        r = USER.bookmarks.length < before; break;
+      }
+      case 'memo_save': {
+        if (args.id && USER.memos.some((x) => x.id === args.id)) {
+          const m = USER.memos.find((x) => x.id === args.id);
+          m.body = args.body; m.updated = '시험시각';
+          r = m.id;
+        } else {
+          const id = userSeq++;
+          USER.memos.push({ id, bk: args.bk, ch: args.ch, v: args.v, body: args.body, updated: '시험시각' });
+          r = id;
+        }
+        break;
+      }
+      case 'memo_delete': {
+        const before = USER.memos.length;
+        USER.memos = USER.memos.filter((x) => x.id !== args.id);
+        r = USER.memos.length < before; break;
+      }
+      case 'highlight_set': {
+        const key = args.bk + ':' + args.ch + ':' + args.v;
+        if (!args.color) delete USER.highlights[key];
+        else USER.highlights[key] = args.color;
+        r = null; break;
+      }
 
       default: r = null;
     }

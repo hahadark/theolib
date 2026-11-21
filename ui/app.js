@@ -101,7 +101,7 @@ function itemHiddenKey(f) {
 const KORD = { bible: 0, code: 1, lex: 2, comm: 3 };
 const GORD = { '한국어': 0, '영어': 1, '원어': 2, '외국어': 3 };
 const DEFAULT_NAMES = ['개역개정', '개역한글', '새번역', 'ESV', 'NIV2011', 'KJV1769'];
-const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [], filter: 'all', collapsed: {}, focusKind: null };
+const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [], filter: 'all', collapsed: {}, expanded: {}, focusKind: null, anchorId: null };
 async function previewUrl(url) {
   msg('선언 파일을 확인하는 중…');
   let d;
@@ -152,7 +152,7 @@ async function handlePaths(paths) {
     itemState.installed = src.length ? src[0].items || [] : [];
     itemState.local = true; itemState.rawLocal = ok;
     itemState.files = ok.map((i) => ({ ...i, license: i.desc, sha256: '' }));
-    itemState.sel = new Set(itemState.files.map((f) => f.id)); itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
+    itemState.sel = new Set(itemState.files.map((f) => f.id)); itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1; itemState.filter = 'all'; itemState.collapsed = {}; itemState.expanded = {};
     $('#srcpreview').innerHTML = `<div class="note"><b>내 파일</b> <span class="muted">${ok.length}개 인식</span>${bad.length ? `<div class="err">건너뜀 ${bad.length}개: ${bad.map((b) => esc(b.name + ' (' + b.skip + ')')).join(', ')}</div>` : ''}</div>`;
     msg(`${ok.length}개를 인식했습니다.`);
     drawItems();
@@ -194,7 +194,7 @@ async function showItems(d, url) {
   const src = await invoke('sources');
   itemState.installed = src.length ? src[0].items || [] : [];
   itemState.local = false; itemState.url = url; itemState.files = d.files; itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
-  itemState.filter = 'all'; itemState.collapsed = {}; itemState.focusKind = null; itemState.anchorId = null;
+  itemState.filter = 'all'; itemState.collapsed = {}; itemState.expanded = {}; itemState.focusKind = null; itemState.anchorId = null;
   itemState.sel = new Set(d.files.filter(defaultSelected).map((f) => f.id));
   drawItems();
 }
@@ -300,42 +300,84 @@ function tilesHtml(items) {
   }
   return out.join('');
 }
+// 종류·분류·시리즈를 아우르는 접힌 요약 줄 목록을 만든다.
+function summaryRows(files) {
+  const rows = [];
+  const push = (key, label, items, kind, series) => rows.push({ key, label, items, kind, series });
+  const bibles = files.filter((f) => f.kind === 'bible');
+  for (const grp of ['한국어', '영어', '원어', '외국어']) {
+    const arr = bibles.filter((f) => f.grp === grp);
+    if (arr.length) push('bible:' + grp, grp === '원어' ? '원어 번역본' : grp + ' 번역본', arr, 'bible', null);
+  }
+  const etc = bibles.filter((f) => !['한국어', '영어', '원어', '외국어'].includes(f.grp));
+  if (etc.length) push('bible:기타', '기타 번역본', etc, 'bible', null);
+  const codes = files.filter((f) => f.kind === 'code');
+  if (codes.length) push('code', '원어 번호 본문·원전 분해', codes, 'code', null);
+  const lexs = files.filter((f) => f.kind === 'lex');
+  if (lexs.length) push('lex', '원어 사전', lexs, 'lex', null);
+  const comms = files.filter((f) => f.kind === 'comm');
+  const seen = new Set();
+  for (const f of comms) {
+    const key = isSplit(f) ? 'series:' + f.series : 'comm:' + f.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const items = isSplit(f) ? comms.filter((x) => x.series === f.series) : [f];
+    const label = isSplit(f) ? (f.series_name || String(f.name).split(' · ')[0]) : f.name;
+    push(key, label, items, 'comm', isSplit(f) ? f.series : null);
+  }
+  return rows;
+}
+// 줄 요약: 선택 상태(전부/일부/없음)와 숫자들.
+function rowState(items) {
+  const split = items.length > 0 && isSplit(items[0]);
+  const nOn = items.filter((f) => itemState.sel.has(f.id)).length;
+  const selBytes = items.filter((f) => itemState.sel.has(f.id)).reduce((a, f) => a + f.bytes, 0);
+  const selDb = items.filter((f) => itemState.sel.has(f.id)).reduce((a, f) => a + f.db_bytes, 0);
+  const have = items.filter((f) => statusOf(f) !== '안 받음').length;
+  const tick = nOn === 0 ? 'off' : (nOn === items.length ? 'on' : 'part');
+  return { split, nOn, total: items.length, selBytes, selDb, have, tick };
+}
+// 줄을 펼쳤을 때 그 줄에 속한 타일(일반 묶음은 타일, 책별 시리즈는 시리즈 타일+책)을 그린다.
+function rowTilesHtml(row, items) {
+  if (row.kind === 'comm' && isSplit(items[0])) return seriesHtml(row.series, items);
+  return `<div class="it-tiles" data-kind="${row.kind}">${tilesHtml(items)}</div>`;
+}
 function drawItems() {
   const { files, sel } = itemState;
-  const vis = visibleFiles();
+  const base = files.filter((f) => {
+    const st = statusOf(f);
+    if (itemState.filter === 'have' && st !== '받음') return false;
+    if (itemState.filter === 'none' && st !== '안 받음') return false;
+    if (itemState.filter === 'new' && st !== '새 판 있음') return false;
+    return true;
+  });
+  const ql = itemState.q.trim().toLowerCase();
+  const qMatch = (f) => !ql || (f.name + ' ' + f.grp + ' ' + (KIND[f.kind] || '') + ' ' + (f.license || '')).toLowerCase().includes(ql);
   const chosen = files.filter((f) => sel.has(f.id));
   const total = chosen.reduce((a, f) => a + f.bytes, 0);
-  const panels = groupPanels();
 
   let filterBar = '<div class="it-bar">';
   for (const [k, lab] of [['all', '전체'], ['have', '받은 것'], ['none', '안 받은 것'], ['new', '새 판 있음']])
     filterBar += `<button type="button" class="it-fbtn${itemState.filter === k ? ' on' : ''}" data-filter="${k}">${lab}</button>`;
-  filterBar += `<input id="itq" placeholder="이름·분류·근거로 검색" value="${esc(itemState.q)}"><span class="muted">${vis.length}/${files.length}항목</span></div>`;
+  filterBar += `<input id="itq" placeholder="이름·분류·근거로 검색" value="${esc(itemState.q)}"><span class="muted">${chosen.length}/${files.length}항목 선택</span></div>`;
 
+  const rows = summaryRows(base);
   let body = '';
-  for (const kind of KINDS_ORDER) {
-    const parts = panels.filter((p) => p.kind === kind);
-    if (!parts.length) continue;
-    const all = vis.filter((f) => f.kind === kind);
-    const n = all.length, m = all.filter((f) => sel.has(f.id)).length;
-    const mb = all.filter((f) => sel.has(f.id)).reduce((a, f) => a + f.bytes, 0);
-    const ck = 'kind:' + kind;
-    const collapsed = !!(itemState.collapsed && itemState.collapsed[ck]);
-    const allOn = m === n;
-    let inner = '';
-    for (const p of parts) {
-      if (p.grp) inner += `<div class="it-sub" data-kind="${kind}"><div class="it-subh">${esc(p.grp)} <span class="muted">${p.items.length}</span></div><div class="it-tiles">${tilesHtml(p.items)}</div></div>`;
-      else inner += `<div class="it-tiles" data-kind="${kind}">${tilesHtml(p.items)}</div>`;
-    }
-    body += `<section class="it-card" data-kind="${kind}" tabindex="0">
-      <header class="it-head">
-        <button type="button" class="it-cfold" data-cfold="${ck}" aria-expanded="${!collapsed}">${collapsed ? '▸' : '▾'} <b>${esc(KIND[kind] || kind)}</b></button>
-        <span class="it-stats muted">${n}개 · 고른 것 ${m}개 · ${fmtB(mb)}</span>
+  for (const row of rows) {
+    const matchItems = ql ? row.items.filter(qMatch) : row.items;
+    if (ql && !matchItems.length) continue; // 검색 중: 맞는 항목이 있는 줄만 보인다
+    const expanded = ql ? true : !!(itemState.expanded && itemState.expanded[row.key]);
+    const st = rowState(ql ? matchItems : row.items);
+    body += `<div class="it-row" data-kind="${row.kind}" data-key="${esc(row.key)}">
+      <div class="it-row-head" tabindex="0">
+        <button type="button" class="it-cbox ${st.tick}" data-key="${esc(row.key)}" title="이 줄 전체를 고르거나 해제"></button>
+        <button type="button" class="it-row-exp" data-key="${esc(row.key)}" aria-expanded="${expanded}" title="펼치기·접기">${expanded ? '▾' : '▸'}</button>
+        <span class="it-row-name">${esc(row.label)}</span>
+        <span class="it-row-meta muted">고른 ${st.nOn}/${st.total}${st.split ? '책' : '개'} · ${fmtB(st.selBytes)} 받기 · 풀면 ${fmtB(st.selDb)} · 받음 ${st.have}${st.split ? '책' : '개'}</span>
         <span class="spacer"></span>
-        <button type="button" class="it-selall" data-kind="${kind}" data-on="${allOn ? 0 : 1}">${allOn ? '해제' : '모두 선택'}</button>
-      </header>
-      ${collapsed ? '' : inner}
-    </section>`;
+      </div>
+      <div class="it-row-body"${expanded ? '' : ' hidden'}>${rowTilesHtml(row, ql ? matchItems : row.items)}</div>
+    </div>`;
   }
   if (!body) body = '<p class="muted it-empty">조건에 맞는 항목이 없습니다.</p>';
 
@@ -346,9 +388,26 @@ function drawItems() {
 
   const qi = $('#itq'); qi.oninput = () => { itemState.q = qi.value; drawItems(); };
   $('#itemsbox').querySelectorAll('.it-fbtn').forEach((b) => (b.onclick = () => { itemState.filter = b.dataset.filter; itemState.focusKind = null; drawItems(); }));
-  $('#itemsbox').querySelectorAll('.it-cfold').forEach((b) => (b.onclick = () => { const k = b.dataset.cfold; itemState.collapsed[k] = !itemState.collapsed[k]; drawItems(); itemState.focusKind = k.slice(5); }));
-  $('#itemsbox').querySelectorAll('.it-selall').forEach((b) => (b.onclick = () => { const kind = b.dataset.kind, on = b.dataset.on === '1'; for (const f of vis) if (f.kind === kind) on ? sel.add(f.id) : sel.delete(f.id); itemState.focusKind = kind; drawItems(); }));
-  $('#itemsbox').querySelectorAll('.it-card').forEach((c) => (c.onclick = (ev) => { if (ev.target.closest('button') || ev.target.closest('.it-tile')) return; itemState.focusKind = c.dataset.kind; }));
+  // 줄 체크박스: 그 줄의 항목 전부 선택/해제
+  $('#itemsbox').querySelectorAll('.it-cbox').forEach((b) => (b.onclick = () => {
+    const row = summaryRows(base).find((r) => r.key === b.dataset.key);
+    const ids = (row ? row.items : []).map((f) => f.id);
+    const allOn = ids.length > 0 && ids.every((x) => sel.has(x));
+    for (const id of ids) allOn ? sel.delete(id) : sel.add(id);
+    itemState.focusKind = row ? row.kind : null;
+    drawItems();
+  }));
+  // 줄 ▸ 펼치기·접기
+  $('#itemsbox').querySelectorAll('.it-row-exp').forEach((b) => (b.onclick = () => {
+    itemState.expanded = itemState.expanded || {};
+    itemState.expanded[b.dataset.key] = !itemState.expanded[b.dataset.key];
+    drawItems();
+  }));
+  // 줄 머리(체크박스·펼침·타일이 아닌 곳)를 누르면 그 종류에 초점(⌘A 대상)
+  $('#itemsbox').querySelectorAll('.it-row').forEach((r) => r.addEventListener('click', (ev) => {
+    if (ev.target.closest('button') || ev.target.closest('.it-tile')) return;
+    itemState.focusKind = r.dataset.kind;
+  }));
   bindTiles();
 
   if (itemState.local) return drawLocalButtons();
@@ -548,6 +607,39 @@ async function cached(fn, ...args) {
 }
 function invalidateCache() { for (const k in cache) delete cache[k]; }
 
+// ---- 책갈피·메모·하이라이트(코어 user_* 명령) ----
+const HL_COLORS = { yellow: '노랑', green: '초록', pink: '분홍' };
+const userCache = {}; // "bk:ch" -> {bookmarks,memos,highlights}
+async function getUserData(bk, ch) {
+  const k = bk + ':' + ch;
+  if (!(k in userCache)) {
+    const d = await invoke('user_list', { bk, ch }).catch(() => ({ bookmarks: [], memos: [], highlights: [] }));
+    // 코어 user_list 는 책갈피를 전부 돌려주므로, 이 장 범위(절 표시용)로 걸러 캐시한다.
+    userCache[k] = { bookmarks: (d.bookmarks || []).filter((b) => b.bk === bk && b.ch === ch), memos: d.memos || [], highlights: d.highlights || [] };
+  }
+  return userCache[k];
+}
+function getUserDataSync(bk, ch) {
+  const k = bk + ':' + ch;
+  return userCache[k] || { bookmarks: [], memos: [], highlights: [] };
+}
+function invalidateUserData(bk, ch) { delete userCache[bk + ':' + ch]; }
+// 절 번호별로 정리한 지도(빠른 표시용).
+function userMap(d) {
+  const hl = {}, bm = {}, mm = {};
+  for (const h of (d.highlights || [])) hl[h.v] = h.color;
+  for (const b of (d.bookmarks || [])) (bm[b.v] = bm[b.v] || []).push(b);
+  for (const m of (d.memos || [])) (mm[m.v] = mm[m.v] || []).push(m);
+  return { hl, bm, mm };
+}
+// 절 번호 옆에 붙는 작은 표식(책갈피·메모).
+function userMarksHtml(um, v) {
+  let h = '';
+  if (um.bm[v]) h += `<span class="umark bm" data-v="${v}" title="책갈피">🔖</span>`;
+  if (um.mm[v]) h += `<span class="umark mm" data-v="${v}" title="메모">📝</span>`;
+  return h;
+}
+
 // ---- 패널 본문 렌더
 function renderBody(panel) {
   const ref = panelRef(panel);
@@ -555,8 +647,9 @@ function renderBody(panel) {
   const side = panel.settings.versLayout === 'side' && vers.length > 1;
   const el = panel.body;
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
-  cached(loadRows, vers).then((rows) => {
+  cached(loadRows, vers).then((rows) => getUserData(ref.bk, ref.ch).then((ud) => ({ rows, ud }))).then(({ rows, ud }) => {
     if (panel !== panelByIdLive(panel.id)) return;
+    const um = userMap(ud);
     // 패널별 글자 크기 배율/글 폭(전역 따르기 끄면) 적용
     const useGlobal = panel.settings.useGlobal !== false;
     let inline = '';
@@ -570,11 +663,14 @@ function renderBody(panel) {
       : '';
     const content = rows.map((r) => {
       const sel = ownSel.has(+r.v);
-      return `<div class="vrow ${sel ? 'sel' : ''}${side ? ' side' : ''}" data-v="${r.v}" data-bk="${ref.bk}" data-ch="${ref.ch}"${side ? ` style="--side-cols:${vers.length}"` : ''}>` +
-        `<span class="n vnum ${Fmt.value().target.body.vn}">${r.v}</span>` +
+      const hl = um.hl[r.v] ? ` hl-${esc(um.hl[r.v])}` : '';
+      return `<div class="vrow ${sel ? 'sel' : ''}${side ? ' side' : ''}${hl}" data-v="${r.v}" data-bk="${ref.bk}" data-ch="${ref.ch}"${side ? ` style="--side-cols:${vers.length}"` : ''}>` +
+        `<span class="n vnum ${Fmt.value().target.body.vn}">${r.v}${userMarksHtml(um, r.v)}</span>` +
         `<div class="t">${r.texts.map((t) => `<span class="tline">${vers.length > 1 ? `<span class="vn">${esc(VNAME()[t.ver] || t.ver)}</span>` : ''}${t.html}</span>`).join('')}</div></div>`;
     }).join('') || '<p class="muted">이 장의 본문이 없습니다.</p>';
     el.innerHTML = toggle + content;
+    bindVerseMenu(el, panel, ref);
+    bindMemoMarkers(el, ref);
     const vl = el.querySelector('.vers-layout');
     if (vl) vl.onclick = (ev) => {
       const b = ev.target.closest('button[data-vl]');
@@ -586,6 +682,172 @@ function renderBody(panel) {
   }).catch((x) => { el.innerHTML = `<p class="err">${esc(x)}</p>`; });
 }
 function panelByIdLive(id) { return Layout.panelById(id); }
+
+// ---- 절 오른쪽 클릭(맥 Ctrl+클릭)·길게 누르기 메뉴 + 메모 말풍선 · 대화 상자 ----
+let ctxMenu = null;
+function ctxMenuEl() {
+  if (ctxMenu) return ctxMenu;
+  ctxMenu = document.createElement('div');
+  ctxMenu.id = 'verse-menu';
+  ctxMenu.className = 'verse-menu';
+  ctxMenu.hidden = true;
+  document.body.appendChild(ctxMenu);
+  document.addEventListener('pointerdown', (ev) => { if (ctxMenu && !ctxMenu.hidden && !ctxMenu.contains(ev.target)) hideVerseMenu(); });
+  return ctxMenu;
+}
+function hideVerseMenu() { const m = ctxMenuEl(); m.hidden = true; m.textContent = ''; }
+
+// 절 메뉴를 연다(해당 절의 책갈피·메모·하이라이트 상태를 읽어 항목을 정한다).
+function showVerseMenu(panel, bk, ch, v, x, y) {
+  const m = ctxMenuEl();
+  const ud = getUserDataSync(bk, ch);
+  const um = userMap(ud);
+  const bm = um.bm[v] && um.bm[v][0];
+  const mm = um.mm[v] && um.mm[v][0];
+  const hl = um.hl[v] || '';
+  const ref = `${bookName(bk)} ${ch}:${v}`;
+  const item = (label, fn, extra) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (extra) b.className = extra; b.onclick = () => { hideVerseMenu(); fn(); }; return b; };
+  const color = (name, cls) => item(HL_COLORS[name], () => setHighlight(bk, ch, v, name), hl === name ? 'on' : '');
+  m.textContent = '';
+  const head = document.createElement('div'); head.className = 'vm-head'; head.textContent = ref; m.appendChild(head);
+  m.appendChild(item(bm ? '책갈피 빼기' : '책갈피 넣기', () => (bm ? removeBookmark(bm.id, bk, ch) : addBookmark(bk, ch, v))));
+  m.appendChild(item('메모 쓰기', () => openMemoDialog(bk, ch, v, mm)));
+  const sep = document.createElement('div'); sep.className = 'vm-sep'; m.appendChild(sep);
+  m.appendChild(color('yellow', 'cm-yellow'));
+  m.appendChild(color('green', 'cm-green'));
+  m.appendChild(color('pink', 'cm-pink'));
+  m.appendChild(item('하이라이트 지우기', () => setHighlight(bk, ch, v, '')));
+  m.hidden = false;
+  // 화면 안쪽으로 맞춘다.
+  const r = m.getBoundingClientRect();
+  const cx = Math.min(x, window.innerWidth - r.width - 8);
+  const cy = Math.min(y, window.innerHeight - r.height - 8);
+  m.style.left = Math.max(4, cx) + 'px';
+  m.style.top = Math.max(4, cy) + 'px';
+}
+
+// 본문 패널 안의 절에 오른쪽 클릭/길게 누르기 메뉴를 건다.
+function bindVerseMenu(el, panel, ref) {
+  const open = (v, x, y) => { const bk = ref.bk, ch = ref.ch; showVerseMenu(panel, bk, ch, v, x, y); };
+  el.addEventListener('contextmenu', (ev) => {
+    const row = ev.target.closest('.vrow');
+    if (!row) return;
+    ev.preventDefault();
+    open(+row.dataset.v, ev.clientX, ev.clientY);
+    return false;
+  });
+  // 길게 누르기(터치): 550ms 이상 누르고 있으면 메뉴
+  let lp = null;
+  el.addEventListener('pointerdown', (ev) => {
+    const row = ev.target.closest('.vrow');
+    if (!row) return;
+    lp = { v: +row.dataset.v, x: ev.clientX, y: ev.clientY, t: setTimeout(() => { open(lp.v, lp.x, lp.y); lp = null; }, 550) };
+  });
+  const cancelLp = () => { if (lp) { clearTimeout(lp.t); lp = null; } };
+  el.addEventListener('pointermove', cancelLp);
+  el.addEventListener('pointerup', cancelLp);
+  el.addEventListener('pointercancel', cancelLp);
+}
+
+// 메모 표식을 누르면 말풍선으로 내용을 보여 준다.
+function bindMemoMarkers(el, ref) {
+  el.addEventListener('click', (ev) => {
+    const mk = ev.target.closest('.umark.mm');
+    if (!mk) return;
+    ev.stopPropagation();
+    const v = +mk.dataset.v;
+    const ud = getUserDataSync(ref.bk, ref.ch);
+    const um = userMap(ud);
+    const memos = um.mm[v] || [];
+    if (!memos.length) return;
+    showMemoBubble(mk, memos);
+  });
+}
+function showMemoBubble(anchor, memos) {
+  hideMemoBubble();
+  const b = document.createElement('div');
+  b.className = 'memo-bubble';
+  b.textContent = memos.map((m) => m.body).join('\n');
+  document.body.appendChild(b);
+  const r = anchor.getBoundingClientRect();
+  b.style.left = Math.max(4, r.left) + 'px';
+  b.style.top = Math.max(4, r.bottom + 4) + 'px';
+  const done = () => hideMemoBubble();
+  b.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+  setTimeout(() => document.addEventListener('pointerdown', done, { once: true }), 0);
+  window.__memoBubble = b;
+}
+function hideMemoBubble() { const b = window.__memoBubble; if (b) b.remove(); window.__memoBubble = null; }
+
+// 메모 편집 대화 상자(저장·지우기·취소, Esc 로 닫기).
+let memoDialog = null;
+function memoDialogEl() {
+  if (memoDialog) return memoDialog;
+  memoDialog = document.createElement('div');
+  memoDialog.className = 'memo-dialog-backdrop';
+  memoDialog.hidden = true;
+  memoDialog.innerHTML = `<div class="memo-dialog"><div class="md-head"><b>메모</b><span class="md-ref muted"></span></div><textarea class="md-body"></textarea><div class="md-actions"><button class="md-del">지우기</button><span class="spacer"></span><button class="md-cancel">취소</button><button class="md-save">저장</button></div></div>`;
+  document.body.appendChild(memoDialog);
+  memoDialog.addEventListener('pointerdown', (ev) => { if (ev.target === memoDialog) closeMemoDialog(); });
+  return memoDialog;
+}
+function closeMemoDialog() { memoDialogEl().hidden = true; }
+function openMemoDialog(bk, ch, v, memo) {
+  const d = memoDialogEl();
+  d.querySelector('.md-ref').textContent = `${bookName(bk)} ${ch}:${v}`;
+  d.querySelector('.md-body').value = memo ? memo.body : '';
+  d.dataset.bk = bk; d.dataset.ch = ch; d.dataset.v = v;
+  d.dataset.id = memo ? memo.id : '';
+  d.hidden = false;
+  const ta = d.querySelector('.md-body'); ta.focus();
+  const del = d.querySelector('.md-del');
+  del.style.display = memo ? '' : 'none';
+  d.querySelector('.md-cancel').onclick = closeMemoDialog;
+  d.querySelector('.md-save').onclick = () => saveMemoFromDialog();
+  del.onclick = () => deleteMemoFromDialog();
+}
+function saveMemoFromDialog() {
+  const d = memoDialogEl();
+  const bk = +d.dataset.bk, ch = +d.dataset.ch, v = +d.dataset.v;
+  const body = d.querySelector('.md-body').value;
+  const id = d.dataset.id ? +d.dataset.id : null;
+  closeMemoDialog();
+  invoke('memo_save', { id, bk, ch, v, body }).then(() => { invalidateUserData(bk, ch); reRenderUserPanels(bk, ch); }).catch((x) => console.error(x));
+}
+function deleteMemoFromDialog() {
+  const d = memoDialogEl();
+  const bk = +d.dataset.bk, ch = +d.dataset.ch, v = +d.dataset.v;
+  const id = +d.dataset.id;
+  closeMemoDialog();
+  invoke('memo_delete', { id }).then(() => { invalidateUserData(bk, ch); reRenderUserPanels(bk, ch); }).catch((x) => console.error(x));
+}
+
+// ---- 기록 변경을 코어에 보내고 화면을 다시 그리는 공통 묶음 ----
+async function setHighlight(bk, ch, v, color) {
+  await invoke('highlight_set', { bk, ch, v, color }).catch((x) => console.error(x));
+  invalidateUserData(bk, ch);
+  reRenderUserPanels(bk, ch);
+}
+async function addBookmark(bk, ch, v) {
+  await invoke('bookmark_add', { bk, ch, v, label: '' }).catch((x) => console.error(x));
+  invalidateUserData(bk, ch);
+  reRenderUserPanels(bk, ch);
+}
+async function removeBookmark(id, bk, ch) {
+  await invoke('bookmark_delete', { id }).catch((x) => console.error(x));
+  invalidateUserData(bk, ch);
+  reRenderUserPanels(bk, ch);
+}
+// 그 장을 보는 본문 패널과 '내 기록' 패널을 다시 그린다.
+function reRenderUserPanels(bk, ch) {
+  for (const p of Layout.panels()) {
+    if (p.kind === 'body') {
+      const r = panelRef(p);
+      if (r.bk === bk && r.ch === ch) renderBody(p);
+      else renderPanel(p);
+    } else if (p.kind === 'records') renderRecords(p);
+  }
+}
 
 // 주석 한 항목을 화면 조각으로(절 범위 배지를 머리에 붙이고, 선택 절 항목은 왼쪽 색 띠).
 function noteHtml(n, current) {
@@ -817,6 +1079,48 @@ async function openArticleBody(id, title, el, panel) {
   if (back && panel) back.onclick = () => renderArticlePanel(panel);
 }
 
+// ---- 내 기록 패널(책갈피·메모 목록, 최근 순, 누르면 연동 본문이 그 절로 이동) ----
+async function renderRecords(panel) {
+  const el = panel.body;
+  const q = (panel.settings.q || '').trim();
+  el.innerHTML = `<div class="rec-bar"><input class="rec-q" placeholder="거르기 (절 표기·내용)" value="${esc(q)}"><span class="muted rec-count"></span></div><div class="rec-list"><p class="muted">불러오는 중…</p></div>`;
+  const inp = el.querySelector('.rec-q');
+  const list = el.querySelector('.rec-list');
+  const draw = async () => {
+    const d = await invoke('user_list', { bk: state.bk, ch: 0 }).catch(() => ({ bookmarks: [], memos: [], highlights: [] }));
+    const ql = (inp.value || '').trim().toLowerCase();
+    const rows = [];
+    for (const m of d.memos || []) rows.push({ type: 'memo', id: m.id, bk: m.bk, ch: m.ch, v: m.v, t: '메모', body: m.body, ts: m.updated });
+    for (const b of d.bookmarks || []) rows.push({ type: 'bookmark', id: b.id, bk: b.bk, ch: b.ch, v: b.v, t: '책갈피', body: b.label, ts: b.created });
+    // 최근 순(없는 ts 는 뒤로)
+    rows.sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')) || b.bk - a.bk || b.ch - a.ch || b.v - a.v);
+    const ref = (r) => `${bookName(r.bk)} ${r.ch}:${r.v}`;
+    const shown = rows.filter((r) => !ql || (ref(r) + ' ' + (r.body || '') + ' ' + r.t).toLowerCase().includes(ql));
+    el.querySelector('.rec-count').textContent = `${shown.length}건`;
+    if (!shown.length) { list.innerHTML = '<p class="muted">기록이 없습니다.</p>'; return; }
+    list.innerHTML = shown.map((r) => {
+      const icon = r.type === 'memo' ? '📝' : '🔖';
+      return `<div class="rec-item" data-bk="${r.bk}" data-ch="${r.ch}" data-v="${r.v}">` +
+        `<span class="rec-icon">${icon}</span><span class="rec-ref">${esc(ref(r))}</span><span class="rec-body">${esc(r.body || '')}</span></div>`;
+    }).join('');
+    list.onclick = (ev) => {
+      const it = ev.target.closest('.rec-item');
+      if (!it) return;
+      const bk = +it.dataset.bk, ch = +it.dataset.ch, v = +it.dataset.v;
+      state.bk = bk; state.ch = ch; fillChap();
+      showView('bible');
+      openChapter(v).then(() => {
+        // 연동 본문 패널을 그 절로 옮기고 선택 표시도 함께 한다.
+        state.curVerse = v; state.sel = new Set([v]); state.last = v;
+        for (const p of Layout.panels()) if (p.kind === 'body' && p.linked) { p.ref = null; p.linked = true; renderBody(p); }
+        saveView();
+      });
+    };
+  };
+  inp.oninput = () => { panel.settings.q = inp.value; panel.saveSettings(); draw(); };
+  await draw();
+}
+
 function renderPanel(panel) {
   switch (panel.kind) {
     case 'body': renderBody(panel); break;
@@ -825,6 +1129,7 @@ function renderPanel(panel) {
     case 'lex': renderLex(panel); break;
     case 'search': renderSearch(panel); break;
     case 'article': renderArticlePanel(panel); break;
+    case 'records': renderRecords(panel); break;
   }
 }
 
@@ -836,6 +1141,7 @@ function panelTitle(panel) {
   }
   if (panel.kind === 'comm') return s.series || '주석';
   if (panel.kind === 'search') return s.q || '';
+  if (panel.kind === 'records') return '책갈피·메모';
   return '';
 }
 
@@ -1140,9 +1446,9 @@ function renderFormatHost() {
 $('#format-btn').onclick = () => { if (formatHost && !formatHost.hidden) formatHost.hidden = true; else openFormat(); };
 Layout.setOpenPanelFormat(openPanelFormat);
 
-// Esc 로 서식 서랍 닫기
+// Esc 로 서식 서랍·메모 대화 상자·절 메뉴·메모 말풍선 닫기
 function closeFormat() { if (formatHost) formatHost.hidden = true; }
-window.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && formatHost && !formatHost.hidden) closeFormat(); });
+window.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { if (formatHost && !formatHost.hidden) closeFormat(); if (memoDialog && !memoDialog.hidden) closeMemoDialog(); if (ctxMenu && !ctxMenu.hidden) hideVerseMenu(); if (window.__memoBubble) hideMemoBubble(); } });
 
 // ---- 단축키: ⌘+ / ⌘- / ⌘0 (활성 패널 우선, 없으면 본문 공통)
 function activePanel() {
