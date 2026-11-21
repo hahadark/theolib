@@ -26,7 +26,11 @@ struct Preview {
     title: String,
     updated: String,
     note: String,
-    files: Vec<source::FileDecl>,
+    files: serde_json::Value,
+    links: Vec<source::Link>,
+    /// zip 출처: 목록을 읽느라 받은 바이트 수와 전체 크기
+    fetched: u64,
+    size: u64,
 }
 
 #[tauri::command]
@@ -37,9 +41,15 @@ fn sources() -> R<Vec<source::State>> {
 #[tauri::command]
 async fn preview_source(url: String) -> R<Preview> {
     tauri::async_runtime::spawn_blocking(move || {
-        let ctx = source::Ctx::new(url.trim()).map_err(e)?;
+        let url = url.trim();
+        if theolib_core::zipsrc::looks_zip(url) {
+            let h = home()?;
+            let (files, fetched, size) = theolib_core::zipsrc::preview(&h, url).map_err(e)?;
+            return Ok(Preview { origin: "압축 파일".into(), layout: "items".into(), title: "압축 파일".into(), updated: String::new(), note: String::new(), files: serde_json::Value::Array(files), links: vec![], fetched, size });
+        }
+        let ctx = source::Ctx::new(url).map_err(e)?;
         let d = ctx.declaration().map_err(e)?;
-        Ok(Preview { origin: ctx.origin(), layout: d.layout, title: d.title, updated: d.updated, note: d.note, files: d.files })
+        Ok(Preview { origin: ctx.origin(), layout: d.layout, title: d.title, updated: d.updated, note: d.note, files: serde_json::to_value(&d.files).map_err(e)?, links: d.links, fetched: 0, size: 0 })
     })
     .await
     .map_err(e)?

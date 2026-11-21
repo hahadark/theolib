@@ -142,7 +142,7 @@ pub fn scan(paths: &[PathBuf]) -> Vec<LocalItem> {
     out
 }
 
-fn check(p: &Path, kind: &str) -> Result<i64> {
+pub fn check(p: &Path, kind: &str) -> Result<i64> {
     let c = open_ro(p).map_err(|_| anyhow::anyhow!("SQLite 파일이 아니거나 열 수 없습니다"))?;
     let (table, cols): (&str, &[&str]) = if kind == "lex" { ("Lexicon", &["id", "scode", "dtext"]) } else { ("Bible", &["id", "book", "chapter", "verse", "btext"]) };
     if !has_cols(&c, table, cols) {
@@ -169,8 +169,18 @@ fn file_sha(p: &Path) -> Result<String> {
 /// 고른 항목을 통합 DB에 넣는다. 같은 id 가 이미 있으면 `replace`일 때만 바꾸고, 아니면 건너뛴다.
 /// 돌려주는 값: (가져온 id, 건너뛴 id)
 pub fn import(home: &Home, items: &[LocalItem], replace: bool, prog: &mut dyn FnMut(&str, u64, u64)) -> Result<(Vec<String>, Vec<String>)> {
+    import_many(home, items, replace, LOCAL_KEY.to_string(), "", prog)
+}
+
+/// 항목 하나(출처 키 지정, zip 출처용)
+pub fn import_one(home: &Home, it: &LocalItem, replace: bool, key: String, kind: &str, prog: &mut dyn FnMut(&str, u64, u64)) -> Result<()> {
+    import_many(home, std::slice::from_ref(it), replace, key, kind, prog).map(|_| ())
+}
+
+fn import_many(home: &Home, items: &[LocalItem], replace: bool, key: String, skind: &str, prog: &mut dyn FnMut(&str, u64, u64)) -> Result<(Vec<String>, Vec<String>)> {
+    let skind = skind.to_string();
     let mut st = source::load_state(home, SID).unwrap_or(source::State {
-        decl: source::Declaration { format: source::FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] },
+        decl: source::Declaration { links: vec![], format: source::FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] },
         installed: vec![],
         origin: String::new(),
         sources: vec![],
@@ -258,12 +268,12 @@ pub fn import(home: &Home, items: &[LocalItem], replace: bool, prog: &mut dyn Fn
         }
         c.execute_batch("COMMIT")?;
         st.items.retain(|x| x.id != it.id);
-        st.items.push(ItemRec { id: it.id.clone(), kind: it.kind.clone(), name: it.name.clone(), grp: it.grp.clone(), sha256: file_sha(&src_path)?, bytes: it.bytes, db_bytes: it.bytes, license: String::new(), source: LOCAL_KEY.into() });
+        st.items.push(ItemRec { id: it.id.clone(), kind: it.kind.clone(), name: it.name.clone(), grp: it.grp.clone(), sha256: file_sha(&src_path)?, bytes: it.bytes, db_bytes: it.bytes, license: String::new(), source: key.clone() });
         push_unique(&mut st.installed, pack);
-        if !st.sources.iter().any(|s| s.key == LOCAL_KEY) {
-            st.sources.push(SrcInfo { key: LOCAL_KEY.into(), origin: "내 파일".into(), title: "내 파일".into(), files: vec![] });
+        if !st.sources.iter().any(|s| s.key == key) {
+            st.sources.push(SrcInfo { kind: skind.clone(), key: key.clone(), origin: if key == LOCAL_KEY { "내 파일".into() } else { "압축 파일".into() }, title: String::new(), files: vec![] });
         }
-        let si = st.sources.iter_mut().find(|s| s.key == LOCAL_KEY).unwrap();
+        let si = st.sources.iter_mut().find(|s| s.key == key).unwrap();
         push_unique(&mut si.files, &it.id);
         save_state(home, &st)?;
         done.push(it.id.clone());

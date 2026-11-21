@@ -8,5 +8,6 @@ pub mod search;
 pub mod secret;
 pub mod source;
 pub mod user;
+pub mod zipsrc;
 
 pub use home::Home;

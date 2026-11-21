@@ -99,6 +99,9 @@ pub fn kind_of(id: &str) -> &'static str {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Declaration {
+    /// 선언에 적힌 추가 출처 링크(화면에 "추가" 단추로 보인다)
+    #[serde(default)]
+    pub links: Vec<Link>,
     pub format: String,
     #[serde(default)]
     pub layout: String,
@@ -134,7 +137,19 @@ pub struct State {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Link {
+    #[serde(default)]
+    pub title: String,
+    pub url: String,
+    #[serde(default)]
+    pub kind: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SrcInfo {
+    /// "zip" 이면 압축 파일 주소 출처
+    #[serde(default)]
+    pub kind: String,
     pub key: String,
     pub origin: String,
     #[serde(default)]
@@ -153,6 +168,12 @@ pub fn source_key(url: &str) -> String {
 
 static CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// 진행 중인 내려받기를 멈춘다(받은 부분은 남아 다음에 이어받는다).
+pub(crate) fn is_cancelled() -> bool {
+    CANCEL.load(std::sync::atomic::Ordering::SeqCst)
+}
+pub(crate) fn reset_cancel() {
+    CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
+}
 pub fn cancel() {
     CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
 }
@@ -228,6 +249,16 @@ fn explain(e: &ureq::Error, url: &str) -> String {
 }
 
 type Hdrs = Vec<(&'static str, String)>;
+
+/// 구간 요청(`bytes=…` 문자열 그대로). 서버가 구간을 안 주면(200) 응답 그대로 돌려준다.
+pub(crate) fn get_range(url: &str, spec: &str) -> Result<ureq::http::Response<ureq::Body>> {
+    let r = agent().get(url).header("Range", spec).call().map_err(|e| anyhow::anyhow!(explain(&e, url)))?;
+    let c = r.status().as_u16();
+    if c >= 400 {
+        bail!(explain_status(c, false, false));
+    }
+    Ok(r)
+}
 
 fn get(url: &str, range: Option<(u64, &str)>, hdrs: &Hdrs, gh: bool) -> Result<ureq::http::Response<ureq::Body>> {
     let mut rq = agent().get(url);
@@ -612,7 +643,7 @@ pub fn add(home: &Home, url: &str, pick: Option<&[String]>, hide: &[String], pro
         }
         None => decl.files.iter().map(|f| f.id.clone()).collect(),
     };
-    let mut st = load_state(home, SID).unwrap_or(State { decl: Declaration { format: FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] }, installed: vec![], origin: String::new(), sources: vec![], hidden: vec![], pruned: vec![], items: vec![] });
+    let mut st = load_state(home, SID).unwrap_or(State { decl: Declaration { links: vec![], format: FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] }, installed: vec![], origin: String::new(), sources: vec![], hidden: vec![], pruned: vec![], items: vec![] });
     secret::store(home, &format!("src-{key}"), url)?;
     for id in &ids {
         let f = decl.files.iter().find(|f| &f.id == id).unwrap();
@@ -628,7 +659,7 @@ pub fn add(home: &Home, url: &str, pick: Option<&[String]>, hide: &[String], pro
             None => st.decl.files.push(f.clone()),
         }
         if !st.sources.iter().any(|s| s.key == key) {
-            st.sources.push(SrcInfo { key: key.clone(), origin: ctx.origin(), title: decl.title.clone(), files: vec![] });
+            st.sources.push(SrcInfo { kind: String::new(), key: key.clone(), origin: ctx.origin(), title: decl.title.clone(), files: vec![] });
         }
         let si = st.sources.iter_mut().find(|s| s.key == key).unwrap();
         si.title = decl.title.clone();
@@ -651,6 +682,11 @@ pub fn sync(home: &Home, prog: Progress) -> Result<Vec<String>> {
     let mut st = load_state(home, SID)?;
     let mut updated = vec![];
     for si in st.sources.clone() {
+        if si.kind == "zip" {
+            let url = secret::load(home, &format!("src-{}", si.key))?;
+            updated.extend(crate::zipsrc::sync(home, &url, &mut st, prog)?);
+            continue;
+        }
         if si.key == "local" {
             continue; // 내 파일은 갱신 확인 대상이 아니다
         }
@@ -888,6 +924,9 @@ fn install_item(home: &Home, ctx: &Ctx, f: &FileDecl, key: &str, st: &mut State,
 /// 항목별 선언(layout: items)에서 고른 항목만 받아 통합 DB에 넣는다. 이미 같은 판이 있으면 건너뛴다.
 /// 같은 id 가 다른 출처에서 먼저 들어와 있으면 먼저 받은 것을 쓴다.
 pub fn add_items(home: &Home, url: &str, ids: &[String], prog: Progress) -> Result<State> {
+    if crate::zipsrc::looks_zip(url) {
+        return crate::zipsrc::add(home, url, ids, prog);
+    }
     CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
     let ctx = Ctx::new(url)?;
     let decl = ctx.declaration()?;
@@ -895,7 +934,7 @@ pub fn add_items(home: &Home, url: &str, ids: &[String], prog: Progress) -> Resu
         bail!("이 선언은 항목별 형식이 아닙니다(묶음형).");
     }
     let key = source_key(url);
-    let mut st = load_state(home, SID).unwrap_or(State { decl: Declaration { format: FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] }, installed: vec![], origin: String::new(), sources: vec![], hidden: vec![], pruned: vec![], items: vec![] });
+    let mut st = load_state(home, SID).unwrap_or(State { decl: Declaration { links: vec![], format: FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] }, installed: vec![], origin: String::new(), sources: vec![], hidden: vec![], pruned: vec![], items: vec![] });
     secret::store(home, &format!("src-{key}"), url)?;
     for id in ids {
         let f = decl.files.iter().find(|f| &f.id == id).ok_or_else(|| anyhow::anyhow!("선언에 없는 항목: {id}"))?;
@@ -906,7 +945,7 @@ pub fn add_items(home: &Home, url: &str, ids: &[String], prog: Progress) -> Resu
         }
         install_item(home, &ctx, f, &key, &mut st, prog)?;
         if !st.sources.iter().any(|s| s.key == key) {
-            st.sources.push(SrcInfo { key: key.clone(), origin: ctx.origin(), title: decl.title.clone(), files: vec![] });
+            st.sources.push(SrcInfo { kind: String::new(), key: key.clone(), origin: ctx.origin(), title: decl.title.clone(), files: vec![] });
         }
         let si = st.sources.iter_mut().find(|s| s.key == key).unwrap();
         si.title = decl.title.clone();

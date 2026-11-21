@@ -20,6 +20,10 @@ struct Cfg {
     cut_once: Mutex<HashMap<String, usize>>,
     /// (경로, Range 헤더, 돌려준 코드)
     log: Mutex<Vec<(String, String, u16)>>,
+    /// true 면 Range 를 무시하고 항상 200
+    no_range: std::sync::atomic::AtomicBool,
+    /// 보낸 본문 바이트 합
+    sent: std::sync::atomic::AtomicU64,
 }
 
 fn serve(dir: PathBuf, cfg: Arc<Cfg>) -> String {
@@ -35,7 +39,10 @@ fn serve(dir: PathBuf, cfg: Arc<Cfg>) -> String {
                 let req = String::from_utf8_lossy(&buf[..n]).to_string();
                 let path = req.split_whitespace().nth(1).unwrap_or("/").trim_start_matches('/').to_string();
                 let hdr = |k: &str| req.lines().find_map(|l| l.to_lowercase().strip_prefix(&format!("{k}:")).map(|v| v.trim().to_string())).unwrap_or_default();
-                let range = hdr("range");
+                let mut range = hdr("range");
+                if cfg.no_range.load(std::sync::atomic::Ordering::SeqCst) {
+                    range.clear();
+                }
                 if let Some(c) = *cfg.status.lock().unwrap() {
                     let _ = write!(s, "HTTP/1.1 {c} X\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
                     return;
@@ -44,18 +51,25 @@ fn serve(dir: PathBuf, cfg: Arc<Cfg>) -> String {
                     let _ = write!(s, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
                     return;
                 };
-                let (mut start, mut code) = (0usize, 200u16);
+                let (mut start, mut end, mut code) = (0usize, b.len(), 200u16);
                 if let Some(r) = range.strip_prefix("bytes=") {
-                    if let Ok(f) = r.trim_end_matches('-').parse::<usize>() {
-                        if hdr("if-range").is_empty() || hdr("if-range") == "\"t1\"" {
-                            start = f;
-                            code = 206;
+                    if hdr("if-range").is_empty() || hdr("if-range") == "\"t1\"" {
+                        let (a, bb) = r.split_once('-').unwrap_or((r, ""));
+                        if a.is_empty() {
+                            start = b.len().saturating_sub(bb.parse::<usize>().unwrap_or(0));
+                        } else {
+                            start = a.parse().unwrap_or(0);
+                            if let Ok(e) = bb.parse::<usize>() {
+                                end = (e + 1).min(b.len());
+                            }
                         }
+                        code = 206;
                     }
                 }
                 cfg.log.lock().unwrap().push((path.clone(), range, code));
-                let body = &b[start..];
-                let extra = if code == 206 { format!("Content-Range: bytes {start}-{}/{}\r\n", b.len() - 1, b.len()) } else { String::new() };
+                let body = &b[start..end];
+                cfg.sent.fetch_add(body.len() as u64, std::sync::atomic::Ordering::SeqCst);
+                let extra = if code == 206 { format!("Content-Range: bytes {start}-{}/{}\r\n", end - 1, b.len()) } else { String::new() };
                 let _ = write!(s, "HTTP/1.1 {code} X\r\nETag: \"t1\"\r\nAccept-Ranges: bytes\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len());
                 let cut = cfg.cut_once.lock().unwrap().remove(&path);
                 match cut {
@@ -587,4 +601,148 @@ fn local_files_import() {
     let it = theolib_core::localfiles::scan(&[hd]);
     println!("건너뜀 안내: {:?}", it.iter().map(|i| i.skip.clone()).collect::<Vec<_>>());
     assert!(it.iter().any(|i| i.skip.contains("찬송가는 아직 지원하지 않습니다")) && it.iter().all(|i| !i.skip.is_empty()));
+}
+
+/// 저장(무압축) zip 을 만든다. 이름은 UTF-8 표시를 켠다.
+fn make_zip(entries: &[(&str, &[u8])], deflate: bool) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut out = vec![];
+    let mut cd = vec![];
+    for (name, data) in entries {
+        let mut crc = flate2::Crc::new();
+        crc.update(data);
+        let (method, body): (u16, Vec<u8>) = if deflate {
+            let mut e = flate2::write::DeflateEncoder::new(vec![], flate2::Compression::default());
+            e.write_all(data).unwrap();
+            (8, e.finish().unwrap())
+        } else {
+            (0, data.to_vec())
+        };
+        let off = out.len() as u32;
+        let mut lh = vec![];
+        lh.extend(0x04034b50u32.to_le_bytes());
+        lh.extend([20, 0, 0, 8]); // 버전, 플래그(UTF-8)
+        lh.extend(method.to_le_bytes());
+        lh.extend([0u8; 4]);
+        lh.extend(crc.sum().to_le_bytes());
+        lh.extend((body.len() as u32).to_le_bytes());
+        lh.extend((data.len() as u32).to_le_bytes());
+        lh.extend((name.len() as u16).to_le_bytes());
+        lh.extend(0u16.to_le_bytes());
+        lh.extend(name.as_bytes());
+        out.extend(&lh);
+        out.extend(&body);
+        cd.extend(0x02014b50u32.to_le_bytes());
+        cd.extend([20, 0, 20, 0, 0, 8]);
+        cd.extend(method.to_le_bytes());
+        cd.extend([0u8; 4]);
+        cd.extend(crc.sum().to_le_bytes());
+        cd.extend((body.len() as u32).to_le_bytes());
+        cd.extend((data.len() as u32).to_le_bytes());
+        cd.extend((name.len() as u16).to_le_bytes());
+        cd.extend([0u8; 12]);
+        cd.extend(off.to_le_bytes());
+        cd.extend(name.as_bytes());
+    }
+    let cd_off = out.len() as u32;
+    out.extend(&cd);
+    out.extend(0x06054b50u32.to_le_bytes());
+    out.extend([0u8; 4]);
+    out.extend((entries.len() as u16).to_le_bytes());
+    out.extend((entries.len() as u16).to_le_bytes());
+    out.extend((cd.len() as u32).to_le_bytes());
+    out.extend(cd_off.to_le_bytes());
+    out.extend(0u16.to_le_bytes());
+    out
+}
+
+fn tiny_bdb(path: &Path, rows: &[(i64, i64, i64, &str)]) {
+    let c = rusqlite::Connection::open(path).unwrap();
+    c.execute_batch("CREATE TABLE Bible(id INTEGER PRIMARY KEY AUTOINCREMENT, book INTEGER, chapter INTEGER, verse INTEGER, btext VARCHAR)").unwrap();
+    for r in rows {
+        c.execute("INSERT INTO Bible(book,chapter,verse,btext) VALUES(?,?,?,?)", (r.0, r.1, r.2, r.3)).unwrap();
+    }
+}
+
+#[test]
+fn zip_range_and_fallback() {
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let srv = t.path().join("srv");
+    std::fs::create_dir_all(&srv).unwrap();
+    tiny_bdb(&t.path().join("Tiny.bdb"), &[(44, 24, 10, "Governor beckoned"), (44, 24, 11, "Eleven")]);
+    tiny_bdb(&t.path().join("Other.bdb"), &[(44, 24, 10, "Other text")]);
+    let mut x = 88172645463325252u64;
+    let big: Vec<u8> = (0..300_000).map(|_| { x ^= x << 13; x ^= x >> 7; x ^= x << 17; x as u8 }).collect(); // 압축 안 되는 큰 항목(목록 읽기에 받으면 안 됨)
+    let tiny = std::fs::read(t.path().join("Tiny.bdb")).unwrap();
+    let other = std::fs::read(t.path().join("Other.bdb")).unwrap();
+    let zip = make_zip(&[("dir/Big.cmp", &big), ("dir/번역본파일목록.txt", "◆ Tiny : 작은 시험 번역본\n".as_bytes()), ("dir/Tiny.bdb", &tiny), ("dir/Other.bdb", &other), ("dir/찬송.hdb", b"h")], true);
+    std::fs::write(srv.join("pack.zip"), &zip).unwrap();
+    let cfg = Arc::new(Cfg::default());
+    let url = serve(srv.clone(), cfg.clone()).replace("theolib.json", "pack.zip");
+    assert!(theolib_core::zipsrc::looks_zip(&url));
+    let home = Home::at(t.path().join("home"));
+    let (files, fetched, size) = theolib_core::zipsrc::preview(&home, &url).unwrap();
+    println!("zip 크기 {size}, 목록 읽기에 받은 바이트 {fetched}, 항목 {:?}", files.iter().map(|f| f["id"].as_str().unwrap().to_string()).collect::<Vec<_>>());
+    assert_eq!(size as usize, zip.len());
+    assert!(files.iter().any(|f| f["id"] == "bible:Tiny" && f["license"] == "작은 시험 번역본"));
+    assert!(files.iter().any(|f| !f["skip"].as_str().unwrap().is_empty()));
+    // 고른 항목 하나만 받기: 받은 바이트는 그 항목 압축 크기 근처
+    cfg.sent.store(0, std::sync::atomic::Ordering::SeqCst);
+    source::add_items(&home, &url, &[s("bible:Tiny")], &mut |_, _, _| {}).unwrap();
+    let sent = cfg.sent.load(std::sync::atomic::Ordering::SeqCst);
+    println!("항목 1개 받기에 보낸 바이트 {sent}");
+    assert!(sent < 200_000);
+    let r = Reader::open(&home).unwrap();
+    assert!(r.chapter(44, 24, &[s("Tiny")]).unwrap()[0].texts[0].1.contains("Governor"));
+    // 갱신: 바뀐 것 없음
+    assert!(source::sync(&home, &mut |_, _, _| {}).unwrap().is_empty());
+    // 중앙 목록의 CRC 가 바뀐 항목만 갱신
+    let zip2 = make_zip(&[("dir/Tiny.bdb", &other), ("dir/Other.bdb", &other)], true);
+    std::fs::write(srv.join("pack.zip"), &zip2).unwrap();
+    let up = source::sync(&home, &mut |_, _, _| {}).unwrap();
+    assert_eq!(up, vec![s("bible:Tiny")]);
+    // Range 를 안 주는 서버: 전체를 받아 고른 것만 푼다
+    cfg.no_range.store(true, std::sync::atomic::Ordering::SeqCst);
+    let home2 = Home::at(t.path().join("home2"));
+    source::add_items(&home2, &url, &[s("bible:Other")], &mut |_, _, _| {}).unwrap();
+    assert!(Reader::open(&home2).unwrap().chapter(44, 24, &[s("Other")]).unwrap()[0].texts[0].1.contains("Other text"));
+    // 깨진 항목은 CRC 로 거부
+    cfg.no_range.store(false, std::sync::atomic::Ordering::SeqCst);
+    let mut bad = zip.clone();
+    let n = bad.len();
+    bad[n / 3] ^= 0xff;
+    std::fs::write(srv.join("pack.zip"), &bad).unwrap();
+    let home3 = Home::at(t.path().join("home3"));
+    let r = source::add_items(&home3, &url, &[s("bible:Tiny"), s("bible:Other")], &mut |_, _, _| {});
+    println!("깨진 zip 결과: {:?}", r.as_ref().err().map(|e| e.to_string()));
+}
+
+/// 실제 배포 zip 을 로컬 Range 서버로 띄운 주소(THEOLIB_ZIP_URL)가 있을 때만. 본문은 기록하지 않는다.
+#[test]
+fn zip_real_url() {
+    let Ok(url) = std::env::var("THEOLIB_ZIP_URL") else { return };
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let home = Home::at(t.path().join("home"));
+    let t0 = Instant::now();
+    let (files, fetched, size) = theolib_core::zipsrc::preview(&home, &url).unwrap();
+    println!("실제 zip: 전체 {size}바이트, 목록 {}개 인식, 목록 읽기에 받은 바이트 {fetched}, {:.2}초", files.len(), t0.elapsed().as_secs_f64());
+    assert!(fetched < 2_000_000);
+    let kjv = files.iter().find(|f| f["id"] == "bible:KJV1769").unwrap();
+    let csize = kjv["bytes"].as_u64().unwrap();
+    source::add_items(&home, &url, &[s("bible:KJV1769")], &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    assert!(r.chapter(44, 24, &[s("KJV1769")]).unwrap().iter().any(|x| x.v == 10));
+    println!("KJV1769 한 항목 받기 완료(압축 크기 {csize}바이트), {:.2}초", t0.elapsed().as_secs_f64());
+}
+
+/// 폴더 통째 인식 시간(THEOLIB_FOLDER 가 있을 때만, 읽기 전용, 내용은 기록하지 않음)
+#[test]
+fn scan_folder_timing() {
+    let Ok(dir) = std::env::var("THEOLIB_FOLDER") else { return };
+    let t0 = Instant::now();
+    let items = theolib_core::localfiles::scan(&[PathBuf::from(dir)]);
+    let skipped = items.iter().filter(|i| !i.skip.is_empty()).count();
+    println!("폴더 인식 {}개(건너뜀 {skipped}개), {:.2}초", items.len(), t0.elapsed().as_secs_f64());
 }

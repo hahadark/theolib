@@ -54,7 +54,7 @@ async function previewUrl(url) {
   }
   msg('');
   state.url = url;
-  if (d.layout === 'items') return showItems(d, url);
+  if (d.layout === 'items') { if (d.size) msg(`압축 파일 목록을 읽었습니다(받은 바이트 ${fmtB(d.fetched)} / 전체 ${fmtB(d.size)}).`); return showItems(d, url); }
   $('#itemsbox').innerHTML = '';
   const p = $('#srcpreview');
   p.innerHTML = `<div class="note"><b>${esc(d.title || d.origin || '자료 출처')}</b><div class="muted">${esc(d.updated)}</div><div class="muted">${esc(d.note)}</div></div>`;
@@ -129,7 +129,9 @@ listen('tauri://drag-drop', (ev) => handlePaths(ev.payload && ev.payload.paths))
 
 // ---- 항목별 받기: 한 목록, 정렬·거르기·분류별 선택
 async function showItems(d, url) {
-  $('#srcpreview').innerHTML = `<div class="note"><b>${esc(d.title || d.origin || '자료 출처')}</b> <span class="muted">${esc(d.origin)}</span><div class="muted">${esc(d.updated)} ${esc(d.note)}</div></div>`;
+  d.files = (d.files || []).filter((f) => !f.skip);
+  $('#srcpreview').innerHTML = `<div class="note"><b>${esc(d.title || d.origin || '자료 출처')}</b> <span class="muted">${esc(d.origin)}</span><div class="muted">${esc(d.updated)} ${esc(d.note)}</div>${(d.links || []).map((l) => `<div><span>${esc(l.title || l.url)}</span> <button data-link="${esc(l.url)}">추가</button></div>`).join('')}</div>`;
+  $('#srcpreview').querySelectorAll('button[data-link]').forEach((b) => (b.onclick = () => run(async () => previewUrl(b.dataset.link))));
   const src = await invoke('sources');
   itemState.installed = src.length ? src[0].items || [] : [];
   itemState.local = false; itemState.url = url; itemState.files = d.files; itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
