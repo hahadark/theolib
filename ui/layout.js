@@ -10,7 +10,7 @@
 
   // ---- 패널 종류별 메타 + 기본 설정
   const PANEL_META = {
-    body: { name: '본문', defaultSettings: { vers: [] } },
+    body: { name: '본문', defaultSettings: { vers: [], versLayout: 'stack' } },
     // series: 이 패널이 보는 주석 시리즈. chapview: 장 전체를 절 순서로 나열(기본). multi: 여러 시리즈를 이어 보기.
     comm: { name: '주석', defaultSettings: { series: null, chapview: true, multi: false } },
     parse: { name: '원전 분해', defaultSettings: {} },
