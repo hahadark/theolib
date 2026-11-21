@@ -203,7 +203,11 @@ fn free_url() -> String {
 /// 번들에서는 `resources/free/theolib.json`이 `<리소스 폴더>/free/theolib.json`에 풀린다.
 fn bundled_free_decl(app: &AppHandle) -> Option<std::path::PathBuf> {
     let dir = app.path().resource_dir().ok()?;
-    for cand in [dir.join("free/theolib.json"), dir.join("theolib.json")] {
+    for cand in [
+        dir.join("free/theolib.json"),
+        dir.join("resources/free/theolib.json"),
+        dir.join("theolib.json"),
+    ] {
         if cand.exists() {
             return Some(cand);
         }
