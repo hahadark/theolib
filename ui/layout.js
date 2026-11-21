@@ -92,8 +92,10 @@
     }
     name() { return PANEL_META[this.kind].name; }
     saveSettings() {
-      const node = nodeOf(rootFromDOM(), this.id);
+      const root = rootFromDOM();
+      const node = nodeOf(root, this.id);
       if (node) node.settings = JSON.parse(JSON.stringify(this.settings));
+      setLast(root); // 즉시 localStorage 에 반영(주석 시리즈·번역본·서식 등 바뀌는 대로 저장)
     }
   }
 
@@ -194,6 +196,7 @@
   function refreshPanelMeta(id) {
     const p = current.byId[id];
     if (p && p.resEl && provider && provider.panelTitle) p.resEl.textContent = provider.panelTitle(p);
+    refreshNarrow();
   }
 
   // ---- 렌더
@@ -205,6 +208,7 @@
     container.appendChild(buildNode(current.root));
     setLast(current.root);
     if (provider && provider.renderAll) provider.renderAll();
+    refreshNarrow();
   }
 
   function setRoot(root) { renderRoot(root); }
@@ -475,6 +479,28 @@
 
   function panels() { return current.panes; }
   function panelById(id) { return current.byId[id]; }
+
+  // ---- 좁은 화면(<720px): 패널을 세로로 쌓고 한 번에 하나씩 넘겨 보는 탭 줄
+  let narrowActive = null;
+  function refreshNarrow() {
+    const bar = document.querySelector('#narrow-bar');
+    if (!bar) return;
+    bar.textContent = '';
+    const ps = current.panes;
+    if (ps.length <= 1) { bar.classList.remove('on'); return; }
+    narrowActive = ps.some((p) => p.id === narrowActive) ? narrowActive : ps[0].id;
+    for (const p of ps) {
+      const b = document.createElement('button');
+      b.className = 'narrow-tab' + (p.id === narrowActive ? ' on' : '');
+      b.dataset.pid = p.id;
+      b.textContent = p.name();
+      b.onclick = () => { narrowActive = p.id; refreshNarrow(); };
+      bar.appendChild(b);
+    }
+    bar.classList.add('on');
+    for (const p of ps) p.el.classList.toggle('narrow-active', p.id === narrowActive);
+  }
+  function setNarrowActive(pid) { if (current.byId[pid]) { narrowActive = pid; refreshNarrow(); } }
 
   function init(rootEl, prov) {
     container = rootEl;

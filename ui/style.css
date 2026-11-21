@@ -35,7 +35,13 @@ table.parse td,table.parse th{border-bottom:1px solid var(--line);padding:2px 6p
 table.parse tr{cursor:pointer}
 .lex{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-top:10px}
 .hit{padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer}
-.hit b,.hit mark{background:var(--sel);color:inherit}
+.sr-summary{color:var(--mut);font-size:13px;margin-bottom:4px}
+.sr-filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.sr-filter{font-size:12px}
+.sr-empty{padding:16px 8px;text-align:center}
+.sr-empty p{margin:4px 0}
+.hit b{background:var(--sel);color:inherit}
+.hit mark{background:var(--hl,#ffe08a);color:inherit}
 .file{display:flex;gap:10px;align-items:center;padding:4px 0}
 .barfill{height:8px;background:var(--line);border-radius:4px;overflow:hidden;width:360px;display:inline-block;vertical-align:middle}
 #fill{height:100%;width:0;background:var(--acc)}
@@ -55,3 +61,18 @@ table.items tr.hidden-row{opacity:.45}
 table.items tr.hidden-row:hover{opacity:.8}
 .hide-toggle{font-size:11px;padding:0 6px;margin-right:6px;border:1px solid var(--line);border-radius:4px;background:none;color:var(--mut);cursor:pointer}
 .itemscroll{max-height:420px;overflow:auto;border:1px solid #ddd}
+
+/* ---- 좁은 화면(720px 미만): 위쪽 바가 줄바꿈되어 넘치지 않고, 누르는 단추는 36px 이상 */
+@media (max-width: 719px) {
+  header { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+  header .future { display: none; } /* 비필수 안내 문구 숨김 */
+  #goto { min-width: 0; flex: 1 1 120px; }
+  nav#tabs { flex-wrap: wrap; }
+  nav#tabs button, .bar button, button { min-height: 36px; }
+  .bar { gap: 6px; padding: 6px 10px; }
+  .bar select, .bar input { min-height: 32px; }
+  #cite, #add-panel, #layout-save, #layout-load, #layout-default, #format-btn { min-height: 36px; }
+  body { min-width: 0; }
+  .versbox .vers { width: 88vw; max-width: 340px; }
+  #goto { width: auto; }
+}

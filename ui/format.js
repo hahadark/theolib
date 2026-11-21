@@ -158,7 +158,8 @@
     const r = document.documentElement.style;
     const ui = t.target.ui;
     const cv = {
-      '--acc': t.accent,
+      // --acc(강조색)는 테마 클래스(:root / html.dark / html.sepia)가 정한다.
+      // 여기서 고정값을 덮으면 어두운/세피아 테마에서 강조 글자 대비가 깨진다.
       '--hl': t.searchHl,
       '--ui-font': fontStack(ui.font),
       '--ui-size': ui.size + 'px',

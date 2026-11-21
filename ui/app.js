@@ -14,9 +14,26 @@ const state = {
   parseRow: [],            // 연동 원전 분해 캐시
   rows: [],                // 연동 본문 캐시
   url: null,
+  view: 'bible',           // 열려 있는 화면 탭
   // 패널별 캐시
   panelData: {},
 };
+
+// ---- 마지막 화면 상태(책·장·절·번역본·열린 탭) 저장·복원(localStorage theolib.ui.v1)
+function saveView() {
+  UIStore.write({ lastView: { bk: state.bk, ch: state.ch, curVerse: state.curVerse, vers: [...state.vers], view: state.view } });
+}
+function restoreView() {
+  const lv = UIStore.read().lastView;
+  if (!lv) return;
+  const b = state.books.find((x) => x.n === lv.bk) || state.books[0];
+  if (b) state.bk = b.n;
+  const ch = Math.min(lv.ch || 1, (state.books.find((x) => x.n === state.bk) || {}).ch || 1);
+  state.ch = Math.max(1, ch);
+  if (Array.isArray(lv.vers)) state.vers = lv.vers.filter((id) => state.versions.some((v) => v.id === id));
+  if (lv.curVerse != null) state.curVerse = lv.curVerse;
+  if (lv.view && ['bible', 'search', 'articles', 'sources'].includes(lv.view)) state.view = lv.view;
+}
 const fmtB = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.ceil(n / 1024) + ' KB');
 const bookName = (n) => (state.books.find((b) => b.n === n) || {}).name || n;
 
@@ -25,9 +42,11 @@ document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => show
 function showView(v) {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
   document.querySelectorAll('main > section').forEach((s) => (s.hidden = s.id !== 'view-' + v));
+  state.view = v;
   if (v === 'sources') loadSources();
   if (v === 'articles') loadArticles();
   if (v === 'search') idxNote();
+  saveView();
 }
 
 // ============================================================ 자료 출처 (다른 작업자가 고침 — 그대로 둠)
@@ -259,6 +278,7 @@ async function boot() {
   await syncHidden();
   state.books = await invoke('books');
   state.versions = (await invoke('versions')).filter((v) => v.kind !== 'parse' && !isHidden('v:' + v.id));
+  restoreView();
   state.vers = state.vers.filter((id) => state.versions.some((v) => v.id === id));
   if (!state.vers.length) { const t = state.versions.filter((v) => v.kind === 'text'); const k = t.find((v) => v.id === '개역개정') || t[0] || state.versions[0]; state.vers = k ? [k.id] : []; }
   $('#book').innerHTML = state.books.map((b) => `<option value="${b.n}">${esc(b.name)}</option>`).join('');
@@ -266,9 +286,12 @@ async function boot() {
   for (const v of state.versions) { const gg = (v.kind === 'code' ? '원어 번호 본문' : v.file + ' · ' + (v.grp || '')); if (gg !== g) { g = gg; hv += `<div class="g">${esc(g)}</div>`; } hv += `<label title="${esc(v.desc)}"><input type="checkbox" value="${esc(v.id)}" ${state.vers.includes(v.id) ? 'checked' : ''}>${esc(v.name)}</label>`; }
   $('#vers').innerHTML = hv;
   $('#vers-sum').textContent = `번역본 (${state.versions.length}종 중 ${state.vers.length}개)`;
-  $('#vers').onchange = () => { state.vers = [...document.querySelectorAll('#vers input:checked')].map((i) => i.value); $('#vers-sum').textContent = `번역본 (${state.versions.length}종 중 ${state.vers.length}개)`; syncBodyPanels(); };
+  $('#vers').onchange = () => { state.vers = [...document.querySelectorAll('#vers input:checked')].map((i) => i.value); $('#vers-sum').textContent = `번역본 (${state.versions.length}종 중 ${state.vers.length}개)`; syncBodyPanels(); saveView(); };
   fillChap();
-  await openChapter(false);
+  const backV = state.curVerse;
+  await openChapter(null);
+  if (backV != null && backV !== false) selectVerse(backV);
+  if (state.view && state.view !== 'bible') showView(state.view);
 }
 
 function fillChap() {
@@ -345,9 +368,10 @@ function renderBody(panel) {
 }
 function panelByIdLive(id) { return Layout.panelById(id); }
 
-// 주석 한 항목을 화면 조각으로.
-function noteHtml(n) {
-  return `<div class="note"><h4>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`;
+// 주석 한 항목을 화면 조각으로(절 범위 배지를 머리에 붙이고, 선택 절 항목은 왼쪽 색 띠).
+function noteHtml(n, current) {
+  const band = current ? ' current' : '';
+  return `<div class="note${band}"><h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`;
 }
 
 // 주석 목록을 대표 1개 / 다른 해설 / 장 단위 개요 3층으로 가른다.
@@ -481,9 +505,9 @@ function renderComm(panel) {
     } else {
       const mine = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm));
       const { rep, others, overviews } = commLayers(mine, ref, ref.v == null);
-      body = rep ? noteHtml(rep) : '';
-      if (others.length) body += `<details class="note-more"><summary>이 절을 포함한 다른 해설 ${others.length}개</summary>${others.map(noteHtml).join('')}</details>`;
-      if (overviews.length) body += `<details class="note-more"><summary>여러 장에 걸친 큰 단락 개요 ${overviews.length}개</summary>${overviews.map(noteHtml).join('')}</details>`;
+      body = rep ? noteHtml(rep, true) : '';
+      if (others.length) body += `<details class="note-more"><summary><span class="mo">이 절을 포함한 다른 해설 ${others.length}개</span><span class="mo-sub">${esc(inVerseOrder(others).map(noteRange).join(' · '))}</span></summary>${others.map((n) => noteHtml(n)).join('')}</details>`;
+      if (overviews.length) body += `<details class="note-more"><summary><span class="mo">여러 장에 걸친 큰 단락 개요 ${overviews.length}개</span><span class="mo-sub">${esc(inVerseOrder(overviews).map(noteRange).join(' · '))}</span></summary>${overviews.map((n) => noteHtml(n)).join('')}</details>`;
       if (!body) body = '<span class="muted">이 자리의 주석이 없습니다.</span>';
     }
     if (!body) body = '<p class="muted">이 장의 주석이 없습니다.</p>';
@@ -609,10 +633,11 @@ async function openChapter(focusV) {
   fillChap();
   if (!state.vers.length) { $('#panes').innerHTML = '<p class="muted" style="padding:12px 16px">번역본을 하나 이상 고르세요.</p>'; return; }
   invalidateCache();
-  state.curVerse = focusV != null ? focusV : null;
+  state.curVerse = (focusV != null && focusV !== false) ? focusV : null;
   state.sel.clear(); state.last = null;
   state.panelData = {};
   renderAll();
+  saveView();
 }
 
 // ---- 패널 본문에서 절 클릭 시 연동 갱신
@@ -644,6 +669,7 @@ function selectVerse(v, extend) {
   state.curVerse = v;
   // 연동 패널만 다시 그린다(선택 강조·주석·원전 연동)
   for (const p of Layout.panels()) if (p.linked) renderPanel(p);
+  saveView();
 }
 
 // ---- 패널 body 클릭 위임(렌더 때마다 교체되므로 위임은 #panes 에 두고 이벤트로 분기)
@@ -906,6 +932,34 @@ window.addEventListener('keydown', (ev) => {
   else if (ev.key === '0') { ev.preventDefault(); Fmt.resetSize(activePanel()); }
 });
 
+// ---- 단축키: ⌘L 구절 이동, ⌘F 검색 탭, ⌘1~4 탭 전환, ←/→ 이전·다음 장
+function editingFocus() {
+  const a = document.activeElement;
+  return a && (a.matches('input,textarea,select') || a.isContentEditable);
+}
+window.addEventListener('keydown', (ev) => {
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (mod) {
+    const k = ev.key.toLowerCase();
+    if (k === 'l') { ev.preventDefault(); showView('bible'); $('#goto').focus(); $('#goto').select(); return; }
+    if (k === 'f') { ev.preventDefault(); showView('search'); $('#q').focus(); $('#q').select(); return; }
+    if (/^[1-4]$/.test(ev.key)) {
+      ev.preventDefault();
+      const v = { '1': 'bible', '2': 'search', '3': 'articles', '4': 'sources' }[ev.key];
+      showView(v);
+      return;
+    }
+    return;
+  }
+  // ←/→: 입력 칸에 초점이 없을 때만 이전·다음 장
+  if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+    if (editingFocus()) return;
+    if (state.view !== 'bible') return;
+    ev.preventDefault();
+    if (ev.key === 'ArrowLeft') $('#prev').click(); else $('#next').click();
+  }
+});
+
 // ---- 인용 복사 (2,000자 제한)
 $('#cite').onclick = async () => {
   if (!state.sel.size) return alert('복사할 절을 누르세요. (Shift+누르기로 범위 선택)');
@@ -936,12 +990,73 @@ async function doSearch() {
   const area = $('#area').value;
   const hits = await invoke('search_text', { q, area, vers: state.vers }).catch((x) => { $('#results').innerHTML = `<p class="err">${esc(x)}</p>`; return null; });
   if (!hits) return;
-  const vname = VNAME();
-  $('#results').innerHTML = (hits.length ? '' : '<p class="muted">결과가 없습니다.</p>') + hits.map((h, i) => `<div class="hit" data-i="${i}"><b>${h.area === 'article' ? '소논문 ' + esc(h.ref_) : esc(bookName(h.bk)) + ' ' + h.ch + (h.v ? ':' + h.v : '')}</b> <span class="tag">${esc(h.area === 'bible' ? vname[h.src] || h.src : h.src)}</span><div>${esc(h.snippet).replace(/\[([^\]]*)\]/g, '<mark>$1</mark>')}</div></div>`).join('');
-  $('#results').onclick = (ev) => { const d = ev.target.closest('.hit'); if (!d) return; const h = hits[+d.dataset.i]; if (h.area === 'article') { showView('articles'); openArticle(h.note_id, h.ref_); return; } state.bk = h.bk || state.bk; state.ch = h.ch || 1; showView('bible'); openChapter(h.v || null); };
+  renderSearchHits($('#results'), hits, q, area);
 }
 $('#dosearch').onclick = doSearch;
 $('#q').addEventListener('keydown', (ev) => ev.key === 'Enter' && doSearch());
+
+// ---- 검색 결과 화면: 검색어 강조(서식 강조색)·책별 건수·책으로 거르기·빈 결과 안내
+// 검색어를 여러 낱말로 나눠 부분 일치도 강조한다(정규식 특수문자는 문자로).
+function hlWords(text, q) {
+  let html = esc(text).replace(/\[([^\]]*)\]/g, '<mark>$1</mark>'); // 백엔드가 [..] 로 표시한 일치 구간
+  const words = String(q || '').trim().split(/\s+/).filter((w) => w.length > 1);
+  if (!words.length) return html;
+  // 이미 <mark> 안은 건너뛰고 텍스트 부분만 다시 강조한다.
+  const re = new RegExp(words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  return html.replace(/(<mark>.*?<\/mark>)|([\s\S]*?)(?=<mark>|<\/mark>|$)/g, (m, mark, txt) => {
+    if (mark) return mark;
+    return txt.replace(re, (s) => `<mark>${s}</mark>`);
+  });
+}
+function bookSummary(hits) {
+  const m = new Map();
+  for (const h of hits) {
+    if (h.area === 'article') { const k = '소논문'; m.set(k, (m.get(k) || 0) + 1); continue; }
+    const name = bookName(h.bk);
+    m.set(name, (m.get(name) || 0) + 1);
+  }
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+function renderSearchHits(container, hits, q, area) {
+  container.textContent = '';
+  const vname = VNAME();
+  if (!hits.length) {
+    container.innerHTML = `<div class="sr-empty"><p>결과가 없습니다.</p><p class="muted">다른 검색어로 다시 시도하거나, 검색 범위를 바꿔 보세요.</p></div>`;
+    return;
+  }
+  const summary = bookSummary(hits);
+  const bookBtns = `<button class="sr-filter on" data-filter="__all">전체 ${hits.length}</button>` +
+    summary.map(([name, n]) => `<button class="sr-filter" data-filter="${esc(name)}">${esc(name)} ${n}</button>`).join('');
+  container.innerHTML = `<div class="sr-summary mutable">${esc(summary.map(([name, n]) => `${name} ${n}건`).join(' · '))}</div>` +
+    `<div class="sr-filter-bar">${bookBtns}</div><div class="sr-list"></div>`;
+  const list = container.querySelector('.sr-list');
+  const draw = (filter) => {
+    const show = hits.filter((h) => filter === '__all' || (h.area === 'article' ? '소논문' : bookName(h.bk)) === filter);
+    const frag = document.createDocumentFragment();
+    hits.forEach((h, i) => {
+      if (filter !== '__all' && (h.area === 'article' ? '소논문' : bookName(h.bk)) !== filter) return;
+      const d = document.createElement('div');
+      d.className = 'hit';
+      d.dataset.i = i; d.dataset.bk = h.area === 'article' ? '' : String(h.bk);
+      d.innerHTML = `<b>${h.area === 'article' ? '소논문 ' + esc(h.ref_) : esc(bookName(h.bk)) + ' ' + h.ch + (h.v ? ':' + h.v : '')}</b> <span class="tag">${esc(h.area === 'bible' ? vname[h.src] || h.src : h.src)}</span><div>${hlWords(h.snippet, q)}</div>`;
+      frag.appendChild(d);
+    });
+    list.innerHTML = ''; list.appendChild(frag);
+  };
+  draw('__all');
+  container.querySelector('.sr-filter-bar').onclick = (ev) => {
+    const b = ev.target.closest('.sr-filter'); if (!b) return;
+    container.querySelectorAll('.sr-filter').forEach((x) => x.classList.toggle('on', x === b));
+    draw(b.dataset.filter);
+  };
+  list.onclick = (ev) => {
+    const d = ev.target.closest('.hit'); if (!d) return;
+    const h = hits[+d.dataset.i];
+    if (h.area === 'article') { showView('articles'); openArticle(h.note_id, h.ref_); return; }
+    state.bk = h.bk || state.bk; state.ch = h.ch || 1; showView('bible'); openChapter(h.v || null);
+  };
+  void area;
+}
 
 // ---- 소논문 (좌측 목록은 기존 화면, 우측은 소논문 화면)
 async function loadArticles() {
@@ -967,10 +1082,22 @@ async function openArticle(id, title) {
     '.comm-top .cv button{font-size:12px;padding:1px 8px;border-radius:0}',
     '.comm-top .cv button:first-child{border-radius:6px 0 0 6px}',
     '.comm-top .cv button:last-child{border-radius:0 6px 6px 0;border-left:none}',
-    '.cnote{scroll-margin-top:46px}',
-    '.cnote .cr{display:inline-block;font-size:12px;color:var(--acc);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-right:6px}',
-    '.cnote.hl{background:var(--sel);border-radius:6px;transition:background .3s}',
+    '.cnote{scroll-margin-top:46px;padding-left:8px;border-left:3px solid transparent}',
+    '.cr{display:inline-block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:600;color:var(--acc);border:1px solid var(--line);border-radius:4px;padding:0 6px;margin-right:7px;background:var(--bg)}',
+    '.cnote .cr{color:var(--acc)}',
+    '.cnote.hl{border-left:3px solid var(--acc);background:var(--sel);transition:background .3s,border-color .3s}',
     '.csec{font-weight:600;color:var(--acc);margin:10px 0 2px;padding-top:6px;border-top:1px solid var(--line)}',
+    // 절 모드: 선택 절의 대표 항목은 왼쪽 색 띠 + 살짝 배경, 접힌 묶음은 한 줄 요약처럼
+    '.note.current{border-left:3px solid var(--acc);padding-left:10px;background:var(--sel);border-radius:0 6px 6px 0;margin-left:-3px}',
+    '.note.current .cr{font-weight:700}',
+    'details.note-more{display:flex;flex-direction:column;border-top:1px solid var(--line);padding:4px 0;margin-top:2px}',
+    'details.note-more>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}',
+    'details.note-more>summary::-webkit-details-marker{display:none}',
+    'details.note-more>summary::before{content:"▸";font-size:12px;color:var(--acc);flex:none}',
+    'details.note-more[open]>summary::before{content:"▾"}',
+    'details.note-more>summary .mo{color:var(--acc);font-weight:600}',
+    'details.note-more>summary .mo-sub{color:var(--mut);font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}',
+    'details.note-more .note{margin-left:6px}',
   ].join('\n');
   document.head.appendChild(st);
 })();

@@ -56,10 +56,16 @@ body.p-dragging, body.p-dragging * { cursor: grabbing; }
 .vnum.bracket { color: var(--mut, #777); }
 .vnum.hidden { display: none; }
 
-/* 좁은 창(720px 미만)에서는 세로로 쌓는다 */
+/* 좁은 창(720px 미만)에서는 세로로 쌓고, 한 번에 하나씩 넘겨 보는 탭 줄을 둔다 */
+#narrow-bar { display: none; }
 @media (max-width: 719px) {
   .p-split.horizontal { flex-direction: column; }
   .p-split.horizontal > .p-grip { cursor: row-resize; }
+  #narrow-bar.on { display: flex; gap: 4px; flex-wrap: wrap; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  #narrow-bar .narrow-tab { min-height: 36px; padding: 0 12px; }
+  /* 좁은 화면에서는 활성 패널 하나만 보여준다 */
+  #panes .p-pane { display: none; }
+  #panes .p-pane.narrow-active { display: flex; }
 }
 
 /* ---- 테마 (format.js 가 html 요소에 클래스를 붙인다) */
