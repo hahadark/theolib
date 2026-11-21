@@ -285,7 +285,8 @@ async function boot() {
   $('#vers').onchange = () => { state.vers = [...document.querySelectorAll('#vers input:checked')].map((i) => i.value); $('#vers-sum').textContent = `번역본 (${state.versions.length}종 중 ${state.vers.length}개)`; syncBodyPanels(); saveView(); };
   fillChap();
   const backV = state.curVerse;
-  await openChapter(backV);
+  await openChapter(null);
+  if (backV != null && backV !== false) selectVerse(backV);
   if (state.view && state.view !== 'bible') showView(state.view);
 }
 
@@ -628,7 +629,7 @@ async function openChapter(focusV) {
   fillChap();
   if (!state.vers.length) { $('#panes').innerHTML = '<p class="muted" style="padding:12px 16px">번역본을 하나 이상 고르세요.</p>'; return; }
   invalidateCache();
-  state.curVerse = focusV != null ? focusV : null;
+  state.curVerse = (focusV != null && focusV !== false) ? focusV : null;
   state.sel.clear(); state.last = null;
   state.panelData = {};
   renderAll();
