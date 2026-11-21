@@ -1,0 +1,5 @@
+[workspace]
+members = ["crates/theolib-core", "crates/theolib"]
+resolver = "2"
+[profile.release]
+opt-level = 3

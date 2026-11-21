@@ -1,0 +1,6 @@
+target/
+node_modules/
+data/
+*.db
+*.db.gz
+.theolib-test/
