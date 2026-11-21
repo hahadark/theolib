@@ -337,6 +337,48 @@ function renderBody(panel) {
 }
 function panelByIdLive(id) { return Layout.panelById(id); }
 
+// 주석 한 항목을 화면 조각으로.
+function noteHtml(n) {
+  return `<div class="note"><h4>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`;
+}
+
+// 주석 목록을 대표 1개 / 다른 해설 / 장 단위 개요 3층으로 가른다.
+// start_key·end_key = 장*1000+절. 대표는 그 절에서 시작하는 가장 넓은 범위.
+function commLayers(notes, ref, chapview) {
+  const ch = ref.ch;
+  const v = ref.v;
+  const key = v ? ch * 1000 + v : null;
+  const items = notes.map((n) => {
+    const sk = Number.isFinite(n.start_key) ? n.start_key : (n.ch1 || ch) * 1000;
+    const ek = Number.isFinite(n.end_key) ? n.end_key : sk;
+    const ch1 = Number.isFinite(n.ch1) ? n.ch1 : ch;
+    const ch2 = Number.isFinite(n.ch2) ? n.ch2 : ch;
+    const r = String(n.ref || '').trim();
+    // 여러 장에 걸친 장 단위 단락, 또는 '24장' 같은 장 표기, 서론(키 0)
+    const multiChapWhole = ch1 !== ch2 && sk % 1000 === 0 && (ek % 1000 === 0 || ek % 1000 === 999);
+    const overview = /^\d+장$/.test(r) || multiChapWhole || (sk === 0 && ek === 0);
+    return { n, sk, ek, overview };
+  });
+  const narrow = (a, b) => (a.ek - a.sk) - (b.ek - b.sk);
+  let rep = null;
+  if (chapview) {
+    const lo = ch * 1000, hi = ch * 1000 + 999;
+    const inside = items.filter((x) => x.sk <= lo && x.ek >= hi);
+    rep = inside.filter((x) => x.overview).sort(narrow)[0] || inside.sort((a, b) => narrow(b, a))[0] || null;
+  } else if (key === null) {
+    rep = items.filter((x) => x.overview).sort((a, b) => narrow(b, a))[0] || items[0] || null;
+  } else {
+    const cover = items.filter((x) => x.sk <= key && x.ek >= key);
+    const cand = cover.filter((x) => !x.overview);
+    const same = cand.filter((x) => x.sk === key);
+    if (same.length) rep = same.sort((a, b) => narrow(b, a))[0];
+    else if (cand.length) rep = cand.sort((a, b) => b.sk - a.sk)[0];
+    if (!rep) rep = cover.sort(narrow)[0] || null; // 대표가 없으면 가장 좁은 포함 항목
+  }
+  const rest = items.filter((x) => x !== rep);
+  return { rep: rep ? rep.n : null, others: rest.filter((x) => !x.overview).map((x) => x.n), overviews: rest.filter((x) => x.overview).map((x) => x.n) };
+}
+
 function renderComm(panel) {
   const ref = panelRef(panel);
   const el = panel.body;
@@ -351,8 +393,13 @@ function renderComm(panel) {
     if (!comms.includes(cur)) cur = comms[0] || null;
     panel.settings.series = cur; panel.saveSettings();
     const tabs = comms.length ? comms.map((c) => `<button class="${c === cur ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('') : '';
-    const body = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm)).map((n) =>
-      `<div class="note"><h4>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`).join('') || '<span class="muted">이 자리의 주석이 없습니다.</span>';
+    const mine = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm));
+    const chapview = panel.settings.chapview === true || ref.v == null;
+    const { rep, others, overviews } = commLayers(mine, ref, chapview);
+    let body = rep ? noteHtml(rep) : '';
+    if (others.length) body += `<details class="note-more"><summary>이 절을 포함한 다른 해설 ${others.length}개</summary>${others.map(noteHtml).join('')}</details>`;
+    if (overviews.length) body += `<details class="note-more"><summary>여러 장에 걸친 큰 단락 개요 ${overviews.length}개</summary>${overviews.map(noteHtml).join('')}</details>`;
+    if (!body) body = '<span class="muted">이 자리의 주석이 없습니다.</span>';
     el.innerHTML = tabs ? `<div class="subtabs">${tabs}</div><div class="notes">${body}</div>` : `<div class="notes">${body}</div>`;
     const tb = el.querySelector('.subtabs');
     if (tb) tb.onclick = (ev) => { const b = ev.target.closest('button'); if (b) { panel.settings.series = b.dataset.c; panel.saveSettings(); Layout.refreshPanelMeta(panel.id); renderComm(panel); } };

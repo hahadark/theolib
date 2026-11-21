@@ -283,6 +283,10 @@ struct NoteOut {
     title: String,
     r#ref: String,
     html: String,
+    start_key: i64,
+    end_key: i64,
+    ch1: i64,
+    ch2: i64,
 }
 
 fn note_html(fmt: &str, body: &str) -> String {
@@ -298,7 +302,7 @@ fn notes(bk: i64, ch: i64, v: Option<i64>) -> R<Vec<NoteOut>> {
     Ok(r.comm_for(bk, ch, v)
         .map_err(e)?
         .into_iter()
-        .map(|n| NoteOut { html: note_html(&n.fmt, &n.body), id: n.id, comm: n.comm, comm_name: n.comm_name, kind: n.kind, title: n.title, r#ref: n.r#ref })
+        .map(|n| NoteOut { html: note_html(&n.fmt, &n.body), id: n.id, comm: n.comm, comm_name: n.comm_name, kind: n.kind, title: n.title, r#ref: n.r#ref, start_key: n.start_key, end_key: n.end_key, ch1: n.ch1, ch2: n.ch2 })
         .collect())
 }
 

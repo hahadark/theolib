@@ -28,10 +28,14 @@
     }));
   }
 
+  // 주석 가짜 데이터: 장 전체 개요 1개 + 절범위 1개 + 단일절 1개를 섞었다.
+  // start_key·end_key 는 장*1000+절.
   const NOTES = [
-    { id: 1, comm: 'karis', comm_name: '카리스종합주석', kind: '주해', title: '시험 주석 1', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 첫째. 짧은 설명입니다.' },
-    { id: 2, comm: 'ivp', comm_name: 'IVP 성경주석', kind: '주해', title: '시험 주석 2', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 둘째. <a class="sc" data-c="G5012">G5012</a> 같은 낱말.' },
-    { id: 3, comm: 'esv', comm_name: 'ESV 주석', kind: '주해', title: '시험 주석 3', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 셋째.' },
+    { id: 1, comm: 'karis', comm_name: '카리스종합주석', kind: '강해', title: '행 24장 전체 흐름', ref: '24장', fmt: 'text', html: '시험용 장 개요. 지어낸 짧은 문장입니다.', start_key: 24000, end_key: 24999, ch1: 24, ch2: 24 },
+    { id: 2, comm: 'karis', comm_name: '카리스종합주석', kind: '주해', title: '바울의 변론', ref: '행 24:10-21', fmt: 'text', html: '시험용 절범위 해설. 짧은 설명입니다.', start_key: 24010, end_key: 24021, ch1: 24, ch2: 24 },
+    { id: 3, comm: 'karis', comm_name: '카리스종합주석', kind: '원어', title: '고개를 끄덕이는', ref: '행 24:10', fmt: 'text', html: '시험용 단일절 해설. <a class="sc" data-c="G5012">G5012</a> 같은 낱말.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
+    { id: 4, comm: 'ivp', comm_name: 'IVP 성경주석', kind: '주해', title: '시험 주석 2', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 둘째.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
+    { id: 5, comm: 'esv', comm_name: 'ESV 주석', kind: '주해', title: '시험 주석 3', ref: '행 24:10', fmt: 'text', html: '시험 주석 본문 셋째.', start_key: 24010, end_key: 24010, ch1: 24, ch2: 24 },
   ];
 
   const PARSE = [

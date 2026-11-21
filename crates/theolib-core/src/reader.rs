@@ -41,6 +41,12 @@ pub struct Note {
     /// text | html
     pub fmt: String,
     pub body: String,
+    /// 장*1000+절, 주석이 시작하는 곳
+    pub start_key: i64,
+    /// 장*1000+절, 주석이 끝나는 곳
+    pub end_key: i64,
+    pub ch1: i64,
+    pub ch2: i64,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -232,7 +238,7 @@ impl Reader {
         // 서론·개론(ch1=0, 키 0)은 1장을 열 때 맨 위에 보인다.
         let intro = if v.is_none() && ch == 1 { 1 } else { 0 };
         let mut s = c.prepare(
-            "SELECT n.id,n.series,coalesce(m.name,n.series),coalesce(n.title,''),coalesce(n.ref,''),coalesce(n.text,'')
+            "SELECT n.id,n.series,coalesce(m.name,n.series),coalesce(n.title,''),coalesce(n.ref,''),coalesce(n.text,''),n.start_key,n.end_key,n.ch1,n.ch2
              FROM note n LEFT JOIN series m ON m.id=n.series
              WHERE n.bk=?1 AND ((n.start_key<=?3 AND n.end_key>=?2) OR (?4=1 AND n.start_key=0 AND n.end_key=0))
              ORDER BY coalesce(m.ord,99),n.seq",
@@ -240,7 +246,7 @@ impl Reader {
         let r = s.query_map((bk, lo, hi, intro), |r| {
             let title: String = r.get(3)?;
             let (kind, title) = split_kind(&title);
-            Ok(Note { id: r.get(0)?, comm: r.get(1)?, comm_name: r.get(2)?, kind, title, r#ref: r.get(4)?, fmt: "text".into(), body: r.get(5)? })
+            Ok(Note { id: r.get(0)?, comm: r.get(1)?, comm_name: r.get(2)?, kind, title, r#ref: r.get(4)?, fmt: "text".into(), body: r.get(5)?, start_key: r.get(6)?, end_key: r.get(7)?, ch1: r.get(8)?, ch2: r.get(9)? })
         })?;
         let mut out: Vec<Note> = r.collect::<rusqlite::Result<_>>()?;
         // 매튜헨리(comm_verse)
@@ -256,7 +262,8 @@ impl Reader {
             }
             last = (comm.clone(), html.clone());
             let name = c.query_row("SELECT coalesce(name,id) FROM series WHERE id=?", [&comm], |r| r.get::<_, String>(0)).unwrap_or(comm.clone());
-            out.push(Note { id: idn, comm, comm_name: name, kind: String::new(), title: format!("{ch}:{vv}"), r#ref: format!("{ch}:{vv}"), fmt: "html".into(), body: html });
+            let key = ch * 1000 + vv;
+            out.push(Note { id: idn, comm, comm_name: name, kind: String::new(), title: format!("{ch}:{vv}"), r#ref: format!("{ch}:{vv}"), fmt: "html".into(), body: html, start_key: key, end_key: key, ch1: ch, ch2: ch });
             idn -= 1;
         }
         Ok(out)
