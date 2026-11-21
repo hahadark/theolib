@@ -548,7 +548,13 @@ let formatTarget = 'all'; // 'all' | panel id
 
 function fmtOpts(targetId) {
   const f = Fmt.target(targetId);
-  const fonts = Fmt.FONT_CANDIDATES.map((x) => `<option value="${esc(x)}" ${x === f.font ? 'selected' : ''}>${esc(x)}</option>`).join('');
+  const avail = Fmt.availableFonts ? Fmt.availableFonts() : Fmt.FONT_CANDIDATES;
+  // 맨 위는 '시스템 기본'(-apple-system). 실제 설치된 글꼴만 나열한다.
+  const list = avail.filter((x) => x !== '-apple-system');
+  const option = (val, label, cur) => `<option value="${esc(val)}" ${val === cur ? 'selected' : ''}>${esc(label)}</option>`;
+  let fonts = option('-apple-system', '시스템 기본', f.font) + list.map((x) => option(x, x, f.font)).join('');
+  // 현재값이 목록에 없으면(예: 이전 저장 글꼴이 지금 미설치) 그대로 보여준다.
+  if (f.font && !avail.includes(f.font) && f.font !== '-apple-system') fonts = option(f.font, f.font, f.font) + fonts;
   const vns = Fmt.VN_MODES.map((m) => `<label><input type="radio" name="vn" value="${m.id}" ${f.vn === m.id ? 'checked' : ''}>${m.name}</label>`).join(' ');
   return {
     f, fonts, vns,

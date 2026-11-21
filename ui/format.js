@@ -25,9 +25,50 @@
   })();
 
   const FONT_CANDIDATES = [
-    '-apple-system', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Nanum Gothic', 'Nanum Myeongjo', 'Noto Sans KR', 'Noto Serif KR',
-    'KoPub Batang', 'KoPub Dotum', 'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Palatino', 'Courier New', 'serif', 'sans-serif', 'monospace',
+    // 맥·윈도우 공통 시스템 글꼴
+    '-apple-system', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Droid Sans Fallback',
+    // 흔한 한글 글꼴
+    'Nanum Gothic', 'Nanum Myeongjo', 'Noto Sans KR', 'Noto Serif KR', 'Noto Sans CJK KR',
+    'KoPub Batang', 'KoPub Dotum', 'Gulim', 'Dotum', 'Batang', 'Gungsuh', 'Gothic', 'Bahnschrift',
+    // 서양 글꼴
+    'Arial', 'Helvetica', 'Helvetica Neue', 'Times New Roman', 'Georgia', 'Palatino', 'Courier New', 'Verdana', 'Tahoma', 'Trebuchet MS',
+    // 헬라어·히브리어(원어) 글꼴
+    'Times New Roman', 'SBL Greek', 'SBL BibLit', 'Ezra SIL', 'Ezra SIL SR', 'Cardo', 'Gentium', 'Gentium Plus', 'New Athena Unicode', 'Galatia SIL',
+    'SBL Hebrew', 'Noto Sans Hebrew', 'David', 'Frank Ruehl', 'Georgia',
+    // 범용
+    'serif', 'sans-serif', 'monospace',
   ];
+
+  // 설치 여부: 같은 문자열을 '후보 글꼴'과 '고정폭(fallback)'으로 재어 폭이 다르면 설치된 것으로 본다.
+  // 설치 안 된 글꼴은 브라우저가 폴백(fallback)으로 처리하므로 폭이 같게 나온다.
+  const _fontProbes = ['mmmmmmmmmmlli', 'iiiiiiiiii', 'WWWWWWWWWW', '가나다라마바사아자차', 'αβγδεζηθικλμν', 'אבגדהוזחטיכלמ'];
+  const _fontCanvas = document.createElement('canvas');
+  function fontInstalled(name) {
+    if (!name) return false;
+    if (name === 'serif' || name === 'sans-serif' || name === 'monospace' || name === '-apple-system') return true;
+    const ctx = _fontCanvas.getContext('2d');
+    let diff = false;
+    for (const probe of _fontProbes) {
+      ctx.font = '72px monospace';
+      const base = ctx.measureText(probe).width;
+      ctx.font = '72px ' + JSON.stringify(name) + ', monospace';
+      const w = ctx.measureText(probe).width;
+      if (Math.abs(w - base) > 0.5) { diff = true; break; }
+    }
+    return diff;
+  }
+
+  // 실제 설치된 글꼴만(중복 제거, 순서 유지), 맨 앞에 '시스템 기본'
+  function availableFonts() {
+    const seen = new Set();
+    const out = [];
+    for (const name of FONT_CANDIDATES) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      if (fontInstalled(name)) out.push(name);
+    }
+    return out;
+  }
 
   const TARGETS = [
     { id: 'body', name: '본문' },
@@ -196,7 +237,7 @@
   function resetToDefault() { store.fmt = normalize(null); svc(); }
 
   window.Fmt = {
-    FONT_CANDIDATES, TARGETS, VN_MODES, DEFAULTS,
+    FONT_CANDIDATES, TARGETS, VN_MODES, DEFAULTS, availableFonts,
     value, set, target, setTarget,
     savePreset, loadPreset, deletePreset, presetNames, resetToDefault,
     bump, resetSize, apply, applyTheme, onChange, emit,
