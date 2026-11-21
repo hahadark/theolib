@@ -101,7 +101,7 @@ function itemHiddenKey(f) {
 const KORD = { bible: 0, code: 1, lex: 2, comm: 3 };
 const GORD = { '한국어': 0, '영어': 1, '원어': 2, '외국어': 3 };
 const DEFAULT_NAMES = ['개역개정', '개역한글', '새번역', 'ESV', 'NIV2011', 'KJV1769'];
-const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [] };
+const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [], filter: 'all', collapsed: {}, focusKind: null };
 async function previewUrl(url) {
   msg('선언 파일을 확인하는 중…');
   let d;
@@ -184,7 +184,9 @@ $('#pickfiles').onclick = async () => handlePaths(await invoke('pick_paths', { f
 $('#pickfolder').onclick = async () => handlePaths(await invoke('pick_paths', { folder: true }));
 listen('tauri://drag-drop', (ev) => handlePaths(ev.payload && ev.payload.paths));
 
-// ---- 항목별 받기: 한 목록, 정렬·거르기·분류별 선택
+// ---- 항목별 받기: 종류별 상자(카드), 칩/타일, 영역·Shift·상자 선택
+const KINDS_ORDER = ['bible', 'code', 'lex', 'comm'];
+let itemFrontier = []; // 화면에 그려진 타일 순서(id) → Shift 범위 선택
 async function showItems(d, url) {
   d.files = (d.files || []).filter((f) => !f.skip);
   $('#srcpreview').innerHTML = `<div class="note"><b>${esc(d.title || d.origin || '자료 출처')}</b> <span class="muted">${esc(d.origin)}</span><div class="muted">${esc(d.updated)} ${esc(d.note)}</div>${(d.links || []).map((l) => `<div><span>${esc(l.title || l.url)}</span> <button data-link="${esc(l.url)}">추가</button></div>`).join('')}</div>`;
@@ -192,43 +194,120 @@ async function showItems(d, url) {
   const src = await invoke('sources');
   itemState.installed = src.length ? src[0].items || [] : [];
   itemState.local = false; itemState.url = url; itemState.files = d.files; itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
-  itemState.sel = new Set(d.files.filter((f) => (f.kind === 'bible' ? DEFAULT_NAMES.includes(f.name) : true) && statusOf(f) !== '받음').map((f) => f.id));
+  itemState.filter = 'all'; itemState.collapsed = {}; itemState.focusKind = null; itemState.anchorId = null;
+  itemState.sel = new Set(d.files.filter(defaultSelected).map((f) => f.id));
   drawItems();
+}
+// 기본 선택: default 힌트를 따르되, 주석(kind=comm)은 크기와 무관하게 기본 선택.
+function defaultSelected(f) {
+  if (statusOf(f) === '받음') return false;
+  if (f.kind === 'comm') return true;
+  if (f.default != null) return !!f.default;
+  return f.kind === 'bible' ? DEFAULT_NAMES.includes(f.name) : true;
 }
 function statusOf(f) {
   if (itemState.local) return itemState.installed.some((x) => x.id === f.id) ? '받음' : '안 받음'; const r = itemState.installed.find((x) => x.id === f.id); return !r ? '안 받음' : r.sha256 === f.sha256 ? '받음' : '새 판 있음'; }
-function drawItems() {
-  const { files, sel, sort, dir, q } = itemState;
-  const cmp = {
-    default: (a, b) => (KORD[a.kind] ?? 9) - (KORD[b.kind] ?? 9) || (GORD[a.grp] ?? 9) - (GORD[b.grp] ?? 9) || a.name.localeCompare(b.name, 'ko'),
-    name: (a, b) => a.name.localeCompare(b.name, 'ko'), grp: (a, b) => (KIND[a.kind] + a.grp).localeCompare(KIND[b.kind] + b.grp, 'ko'),
-    bytes: (a, b) => a.bytes - b.bytes, status: (a, b) => statusOf(a).localeCompare(statusOf(b), 'ko'),
-    sel: (a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id)),
-  }[sort];
+// 검색어·빠른 거르기 단추를 반영해 화면에 보여줄 항목만 골라낸다.
+function visibleFiles() {
+  const { files, q, filter } = itemState;
   const ql = q.trim().toLowerCase();
-  const rows = files.filter((f) => !ql || (f.name + ' ' + f.grp + ' ' + (KIND[f.kind] || '') + ' ' + (f.license || '')).toLowerCase().includes(ql)).sort((a, b) => dir * cmp(a, b));
-  const groups = [...new Set(files.map((f) => f.kind + '|' + f.grp))];
-  const gbtn = groups.map((g) => { const [k, gr] = g.split('|'); return `<span class="gsel">${esc(KIND[k] || k)}·${esc(gr)} <a href="#" data-g="${esc(g)}" data-on="1">모두 선택</a>/<a href="#" data-g="${esc(g)}" data-on="0">해제</a></span>`; }).join(' ');
+  return files.filter((f) => {
+    if (ql && !(f.name + ' ' + f.grp + ' ' + (KIND[f.kind] || '') + ' ' + (f.license || '')).toLowerCase().includes(ql)) return false;
+    const st = statusOf(f);
+    if (filter === 'have' && st !== '받음') return false;
+    if (filter === 'none' && st !== '안 받음') return false;
+    if (filter === 'new' && st !== '새 판 있음') return false;
+    return true;
+  });
+}
+// 종류별 묶음. 번역본(kind=bible)은 분류(한국어·영어·원어·외국어)별 작은 구역으로 나눈다.
+function groupPanels() {
+  const vis = visibleFiles();
+  const panels = [];
+  for (const kind of KINDS_ORDER) {
+    const its = vis.filter((f) => f.kind === kind);
+    if (kind === 'bible') {
+      for (const grp of ['한국어', '영어', '원어', '외국어']) {
+        const arr = its.filter((f) => f.grp === grp);
+        if (arr.length) panels.push({ kind, grp, items: arr });
+      }
+      const etc = its.filter((f) => !['한국어', '영어', '원어', '외국어'].includes(f.grp));
+      if (etc.length) panels.push({ kind, grp: '기타', items: etc });
+    } else if (its.length) {
+      panels.push({ kind, grp: null, items: its });
+    }
+  }
+  return panels;
+}
+function tileHtml(f) {
+  const key = itemHiddenKey(f);
+  const hid = key && isHidden(key);
+  const on = itemState.sel.has(f.id);
+  const st = statusOf(f);
+  const stCls = st === '받음' ? 'st-have' : st === '새 판 있음' ? 'st-new' : '';
+  const stTxt = st === '받음' ? '✓ 받음' : st === '새 판 있음' ? '새 판 있음' : '';
+  const grpSel = itemState.local && f.kind === 'bible'
+    ? `<select class="it-grp" data-grp="${esc(f.id)}">${['한국어', '영어', '원어', '외국어'].map((g) => `<option ${g === f.grp ? 'selected' : ''}>${g}</option>`).join('')}</select>`
+    : '';
+  const grp = f.kind === 'bible' && !grpSel ? `<span class="it-grp muted">${esc(f.grp)}</span>` : '';
+  return `<button type="button" class="it-tile${on ? ' on' : ''}${hid ? ' hidden' : ''}" data-id="${esc(f.id)}" data-kind="${esc(f.kind)}">
+    <span class="it-tile-top"><span class="it-name">${esc(f.name)}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '👁 보임' : '👁 숨김'}</span>` : ''}</span>
+    <span class="it-tile-meta">${grpSel}${grp}${stTxt ? `<span class="it-status ${stCls}">${stTxt}</span>` : ''}<span class="it-bytes muted">${fmtB(f.bytes)}</span></span>
+    ${f.license ? `<span class="it-license muted">${esc(f.license)}</span>` : ''}
+    <span class="it-progress"></span>
+  </button>`;
+}
+function drawItems() {
+  const { files, sel } = itemState;
+  const vis = visibleFiles();
   const chosen = files.filter((f) => sel.has(f.id));
   const total = chosen.reduce((a, f) => a + f.bytes, 0);
-  const rowHtml = (f) => {
-    const key = itemHiddenKey(f);
-    const hid = key && isHidden(key);
-    const tog = key ? `<button class="hide-toggle" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '보이기' : '숨기기'}</button>` : '';
-    return `<tr data-hk="${esc(key || '')}" class="${hid ? 'hidden-row' : ''}"><td><input type="checkbox" data-id="${esc(f.id)}" ${sel.has(f.id) ? 'checked' : ''}></td><td>${tog} ${esc(f.name)}</td><td>${esc(KIND[f.kind] || f.kind)}·${itemState.local && f.kind === 'bible' ? `<select data-grp="${esc(f.id)}">${['한국어', '영어', '원어', '외국어'].map((g) => `<option ${g === f.grp ? 'selected' : ''}>${g}</option>`).join('')}</select>` : esc(f.grp)}</td><td>${fmtB(f.bytes)}</td><td>${statusOf(f)}</td><td class="muted">${esc(f.license || '')}</td></tr>`;
-  };
-  $('#itemsbox').innerHTML = `<div class="bar"><input id="itq" placeholder="이름·분류·근거로 거르기" size="30" value="${esc(q)}"> <span class="muted">${rows.length}/${files.length}항목</span></div><div class="muted">${gbtn}</div>
-  <div class="itemscroll"><table class="items"><tr><th data-s="sel">선택</th><th data-s="name">이름</th><th data-s="grp">분류</th><th data-s="bytes">크기</th><th data-s="status">상태</th><th>근거</th></tr>${rows.map(rowHtml).join('')}</table></div>
-  <div class="bar"><b id="itsum">${chosen.length}개 선택 · 받는 용량 ${fmtB(total)}</b> <button id="itgo">선택한 항목 받기</button> <button id="itdel">선택한 항목 삭제(받은 것만)</button></div>`;
-  const qi = $('#itq'); qi.oninput = () => { itemState.q = qi.value; drawItems(); const n = $('#itq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
-  $('#itemsbox').querySelectorAll('th[data-s]').forEach((th) => (th.onclick = () => { if (itemState.sort === th.dataset.s) itemState.dir *= -1; else { itemState.sort = th.dataset.s; itemState.dir = 1; } drawItems(); }));
-  $('#itemsbox').querySelectorAll('input[data-id]').forEach((c) => (c.onchange = () => { c.checked ? sel.add(c.dataset.id) : sel.delete(c.dataset.id); drawItems(); }));
-  $('#itemsbox').querySelectorAll('.hide-toggle').forEach((b) => (b.onclick = () => {
-    setHidden(b.dataset.key, b.dataset.on === '1');
-    drawItems();
-  }));
-  $('#itemsbox').querySelectorAll('a[data-g]').forEach((a) => (a.onclick = (ev) => { ev.preventDefault(); for (const f of files) if (f.kind + '|' + f.grp === a.dataset.g) a.dataset.on === '1' ? sel.add(f.id) : sel.delete(f.id); drawItems(); }));
-  $('#itemsbox').querySelectorAll('select[data-grp]').forEach((s) => (s.onchange = () => { const f = files.find((x) => x.id === s.dataset.grp); if (f) f.grp = s.value; }));
+  const panels = groupPanels();
+
+  let filterBar = '<div class="it-bar">';
+  for (const [k, lab] of [['all', '전체'], ['have', '받은 것'], ['none', '안 받은 것'], ['new', '새 판 있음']])
+    filterBar += `<button type="button" class="it-fbtn${itemState.filter === k ? ' on' : ''}" data-filter="${k}">${lab}</button>`;
+  filterBar += `<input id="itq" placeholder="이름·분류·근거로 검색" value="${esc(itemState.q)}"><span class="muted">${vis.length}/${files.length}항목</span></div>`;
+
+  let body = '';
+  for (const kind of KINDS_ORDER) {
+    const parts = panels.filter((p) => p.kind === kind);
+    if (!parts.length) continue;
+    const all = vis.filter((f) => f.kind === kind);
+    const n = all.length, m = all.filter((f) => sel.has(f.id)).length;
+    const mb = all.filter((f) => sel.has(f.id)).reduce((a, f) => a + f.bytes, 0);
+    const ck = 'kind:' + kind;
+    const collapsed = !!(itemState.collapsed && itemState.collapsed[ck]);
+    const allOn = m === n;
+    let inner = '';
+    for (const p of parts) {
+      if (p.grp) inner += `<div class="it-sub" data-kind="${kind}"><div class="it-subh">${esc(p.grp)} <span class="muted">${p.items.length}</span></div><div class="it-tiles">${p.items.map(tileHtml).join('')}</div></div>`;
+      else inner += `<div class="it-tiles" data-kind="${kind}">${p.items.map(tileHtml).join('')}</div>`;
+    }
+    body += `<section class="it-card" data-kind="${kind}" tabindex="0">
+      <header class="it-head">
+        <button type="button" class="it-cfold" data-cfold="${ck}" aria-expanded="${!collapsed}">${collapsed ? '▸' : '▾'} <b>${esc(KIND[kind] || kind)}</b></button>
+        <span class="it-stats muted">${n}개 · 고른 것 ${m}개 · ${fmtB(mb)}</span>
+        <span class="spacer"></span>
+        <button type="button" class="it-selall" data-kind="${kind}" data-on="${allOn ? 0 : 1}">${allOn ? '해제' : '모두 선택'}</button>
+      </header>
+      ${collapsed ? '' : inner}
+    </section>`;
+  }
+  if (!body) body = '<p class="muted it-empty">조건에 맞는 항목이 없습니다.</p>';
+
+  $('#itemsbox').innerHTML = `<div class="it-bar">${filterBar}</div><div class="it-scroll">${body}</div>
+  <div class="it-foot"><b id="itsum">${chosen.length}개 선택 · 받는 용량 ${fmtB(total)}</b><span class="spacer"></span><button type="button" id="itgo">받기</button><button type="button" id="itdel">고른 것 삭제</button><button type="button" id="ithide">숨기기/보이기</button></div>`;
+
+  itemFrontier = [...$('#itemsbox').querySelectorAll('.it-tile')].map((t) => t.dataset.id);
+
+  const qi = $('#itq'); qi.oninput = () => { itemState.q = qi.value; drawItems(); };
+  $('#itemsbox').querySelectorAll('.it-fbtn').forEach((b) => (b.onclick = () => { itemState.filter = b.dataset.filter; itemState.focusKind = null; drawItems(); }));
+  $('#itemsbox').querySelectorAll('.it-cfold').forEach((b) => (b.onclick = () => { const k = b.dataset.cfold; itemState.collapsed[k] = !itemState.collapsed[k]; drawItems(); itemState.focusKind = k.slice(5); }));
+  $('#itemsbox').querySelectorAll('.it-selall').forEach((b) => (b.onclick = () => { const kind = b.dataset.kind, on = b.dataset.on === '1'; for (const f of vis) if (f.kind === kind) on ? sel.add(f.id) : sel.delete(f.id); itemState.focusKind = kind; drawItems(); }));
+  $('#itemsbox').querySelectorAll('.it-card').forEach((c) => (c.onclick = (ev) => { if (ev.target.closest('button') || ev.target.closest('.it-tile')) return; itemState.focusKind = c.dataset.kind; }));
+  bindTiles();
+
   if (itemState.local) return drawLocalButtons();
   $('#itgo').onclick = () => run(async () => {
     const ids = files.filter((f) => sel.has(f.id) && statusOf(f) !== '받음').map((f) => f.id);
@@ -245,6 +324,89 @@ function drawItems() {
     if (!confirm(`${ids.length}개 항목을 지웁니다. 계속할까요?`)) return;
     await invoke('remove_items', { ids });
     msg('지웠습니다.'); await boot(); await loadSources(); await showItems({ files, title: '', origin: '', updated: '', note: '' }, itemState.url);
+  });
+  $('#ithide').onclick = () => {
+    const withKey = files.filter((f) => sel.has(f.id) && itemHiddenKey(f));
+    const anyHidden = withKey.some((f) => isHidden(itemHiddenKey(f)));
+    for (const f of withKey) setHidden(itemHiddenKey(f), !anyHidden);
+    drawItems();
+  };
+}
+// 타일 선택(클릭 토글·Shift 범위), 상자 단축키(⌘/Ctrl+A), 영역 드래그 선택 (모두 #itemsbox 위임)
+function bindTiles() {
+  const box = $('#itemsbox');
+  if (!box || box._bound) return;
+  box._bound = true;
+  box.addEventListener('click', (ev) => {
+    const t = ev.target.closest('.it-tile');
+    if (t && !ev.target.closest('.it-hide') && !ev.target.closest('.it-grp')) {
+      const id = t.dataset.id, sel = itemState.sel;
+      if (ev.shiftKey && itemState.anchorId != null && itemState.anchorId !== id) {
+        const a = itemFrontier.indexOf(itemState.anchorId), b = itemFrontier.indexOf(id);
+        if (a >= 0 && b >= 0) { const lo = Math.min(a, b), hi = Math.max(a, b), on = sel.has(itemState.anchorId); for (let i = lo; i <= hi; i++) on ? sel.delete(itemFrontier[i]) : sel.add(itemFrontier[i]); }
+      } else if (!ev.shiftKey) { sel.has(id) ? sel.delete(id) : sel.add(id); }
+      itemState.anchorId = id;
+      drawItems();
+    }
+    const h = ev.target.closest('.it-hide');
+    if (h) { setHidden(h.dataset.key, h.dataset.on === '1'); drawItems(); }
+  });
+  document.addEventListener('keydown', (ev) => {
+    if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'a' || ev.key === 'A') && itemState.focusKind) {
+      const kind = itemState.focusKind;
+      ev.preventDefault();
+      const vis = visibleFiles().filter((f) => f.kind === kind);
+      const allOn = vis.every((f) => itemState.sel.has(f.id));
+      for (const f of vis) allOn ? itemState.sel.delete(f.id) : itemState.sel.add(f.id);
+      drawItems();
+    }
+  });
+  // 영역 선택(pointer): 빈 곳에서 드래그 → 직사각형, 걸친 타일 선택(Alt/Option=해제)
+  let drag = null;
+  box.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    if (ev.target.closest('.it-tile') || ev.target.closest('button') || ev.target.closest('input') || ev.target.closest('select')) return;
+    const sc = box.querySelector('.it-scroll');
+    const rect = (sc || box).getBoundingClientRect();
+    drag = { add: !ev.altKey, moved: false, sx: ev.clientX, sy: ev.clientY, rect, last: new Set() };
+    const r = document.createElement('div'); r.className = 'it-rect'; r.id = 'it-rect'; document.body.appendChild(r);
+    box.classList.add('dragging');
+    ev.preventDefault();
+  });
+  window.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    if (Math.abs(ev.clientX - drag.sx) > 4 || Math.abs(ev.clientY - drag.sy) > 4) drag.moved = true;
+    if (!drag.moved) return;
+    const r = $('#it-rect'); if (!r) return;
+    // 사각형은 .it-scroll 좌표 기준으로 고정 위치로 그린다.
+    r.style.left = Math.min(ev.clientX, drag.sx) + 'px';
+    r.style.top = Math.min(ev.clientY, drag.sy) + 'px';
+    r.style.width = Math.abs(ev.clientX - drag.sx) + 'px';
+    r.style.height = Math.abs(ev.clientY - drag.sy) + 'px';
+    const rx1 = Math.min(ev.clientX, drag.sx), ry1 = Math.min(ev.clientY, drag.sy);
+    const rx2 = Math.max(ev.clientX, drag.sx), ry2 = Math.max(ev.clientY, drag.sy);
+    const hitIds = new Set();
+    box.querySelectorAll('.it-tile').forEach((t) => {
+      const tr = t.getBoundingClientRect();
+      const hit = !(tr.right < rx1 || tr.left > rx2 || tr.bottom < ry1 || tr.top > ry2);
+      const id = t.dataset.id;
+      hitIds.add(id);
+      const on = drag.add ? hit : (itemState.sel.has(id) && !hit);
+      if (drag.add) { if (hit) itemState.sel.add(id); }
+      else { if (hit) itemState.sel.delete(id); }
+      t.classList.toggle('on', itemState.sel.has(id));
+    });
+    // 요약줄 즉시 갱신
+    const c = itemState.files.filter((f) => itemState.sel.has(f.id));
+    const itsum = $('#itsum');
+    if (itsum) itsum.textContent = `${c.length}개 선택 · 받는 용량 ${fmtB(c.reduce((a, f) => a + f.bytes, 0))}`;
+  });
+  window.addEventListener('pointerup', () => {
+    if (!drag) return;
+    drag = null;
+    const r = $('#it-rect'); if (r) r.remove();
+    box.classList.remove('dragging');
+    drawItems();
   });
 }
 
