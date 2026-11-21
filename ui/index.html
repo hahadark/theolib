@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>신학 서재</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <strong class="brand">신학 서재</strong>
+  <nav id="tabs">
+    <button data-view="bible" class="on">성경 보기</button>
+    <button data-view="search">검색</button>
+    <button data-view="articles">소논문</button>
+    <button data-view="sources">자료 출처</button>
+  </nav>
+  <span class="spacer"></span>
+  <input id="goto" placeholder="구절 이동 (예: 행 24:10)" size="22">
+  <span class="future" title="이번 범위가 아닙니다">원본 스캔 · 바구니 · 허브 · AI (준비 중)</span>
+</header>
+<main>
+  <section id="view-bible">
+    <div class="bar">
+      <select id="book"></select>
+      <select id="chap"></select>
+      <button id="prev">◀</button><button id="next">▶</button>
+      <span id="vers" class="vers"></span>
+      <span class="spacer"></span>
+      <button id="cite" title="선택한 절과 출처를 복사합니다 (2,000자 제한)">인용 복사</button>
+    </div>
+    <div class="cols">
+      <div id="text" class="pane"></div>
+      <aside class="pane side">
+        <div id="side-head" class="muted">절을 누르면 주석이 나옵니다.</div>
+        <div id="comm-tabs" class="subtabs"></div>
+        <div id="notes"></div>
+        <details id="orig-box"><summary>원전 분해</summary><div id="parse"></div></details>
+        <div id="lexbox"></div>
+      </aside>
+    </div>
+  </section>
+  <section id="view-search" hidden>
+    <div class="bar">
+      <input id="q" placeholder="검색어 (구절 표기를 넣으면 그 자리로 이동)" size="40">
+      <select id="area"><option value="bible">성경 본문</option><option value="comm">주석</option></select>
+      <button id="dosearch">검색</button>
+    </div>
+    <div id="results" class="pane"></div>
+  </section>
+  <section id="view-articles" hidden>
+    <div class="bar muted">소논문 목록입니다. 본문은 정식 DB가 오면 표시됩니다.</div>
+    <div id="articlelist" class="pane"></div>
+  </section>
+  <section id="view-sources" hidden>
+    <div class="pane">
+      <h3>자료 출처 추가</h3>
+      <p class="muted">받은 주소 하나를 붙여 넣으세요. 주소는 운영체제 보안 저장소에만 보관되고 화면과 기록에 남기지 않습니다.</p>
+      <div class="bar"><input id="srcurl" type="password" placeholder="https://…/theolib.json" size="60"><button id="srcshow" title="주소 보기">보기</button><button id="srccheck">확인</button></div>
+      <div id="srcpreview"></div>
+      <h3>설치된 출처</h3>
+      <div id="srclist"></div>
+      <div id="progress" hidden><div class="barfill"><div id="fill"></div></div><span id="ptext"></span></div>
+      <div id="srcmsg" class="muted"></div>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+:root{--bg:#fbfaf7;--fg:#222;--mut:#777;--line:#ddd;--acc:#264678;--sel:#fff3c4}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1c1e;--fg:#e8e8e8;--mut:#999;--line:#3a3a3c;--acc:#8fb4ee;--sel:#4a4220}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;display:flex;flex-direction:column}
+header{display:flex;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line)}
+.brand{color:var(--acc)}
+.spacer{flex:1}
+.future{font-size:12px;color:var(--mut)}
+nav button,.bar button,button{background:none;border:1px solid var(--line);color:var(--fg);padding:3px 10px;border-radius:6px;cursor:pointer}
+nav button.on,button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+input,select{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+main{flex:1;min-height:0;display:flex}
+section{flex:1;display:flex;flex-direction:column;min-width:0}
+section[hidden]{display:none}
+.bar{display:flex;gap:8px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.vers label{margin-right:8px;white-space:nowrap;font-size:13px}
+.cols{flex:1;display:flex;min-height:0}
+.pane{overflow:auto;padding:12px 16px;flex:1}
+.side{flex:0 0 42%;border-left:1px solid var(--line)}
+.muted{color:var(--mut)}
+.vrow{display:flex;gap:14px;padding:4px 6px;border-radius:6px;cursor:pointer}
+.vrow.sel{background:var(--sel)}
+.vrow .n{color:var(--mut);width:2em;text-align:right;flex:none}
+.vrow .t{flex:1;min-width:0}
+.vrow .t .vn{font-size:11px;color:var(--mut);margin-right:6px}
+a.sc{font-size:10px;color:var(--acc);vertical-align:super;margin:0 2px;cursor:pointer;text-decoration:none}
+.subtabs{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0}
+.subtabs button.on{font-weight:600}
+.note{border-top:1px solid var(--line);padding:8px 0}
+.note h4{margin:0 0 4px;font-size:14px}
+.tag{display:inline-block;font-size:11px;background:var(--line);border-radius:10px;padding:0 8px;margin-right:6px;color:var(--fg)}
+table.parse{border-collapse:collapse;font-size:13px;width:100%}
+table.parse td,table.parse th{border-bottom:1px solid var(--line);padding:2px 6px;text-align:left}
+table.parse tr{cursor:pointer}
+.lex{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-top:10px}
+.hit{padding:6px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.hit b,.hit mark{background:var(--sel);color:inherit}
+.file{display:flex;gap:10px;align-items:center;padding:4px 0}
+.barfill{height:8px;background:var(--line);border-radius:4px;overflow:hidden;width:360px;display:inline-block;vertical-align:middle}
+#fill{height:100%;width:0;background:var(--acc)}
+.err{color:#c0392b}

@@ -4,3 +4,4 @@ data/
 *.db
 *.db.gz
 .theolib-test/
+docs/*.png

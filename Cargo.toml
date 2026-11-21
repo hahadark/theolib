@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/theolib-core", "crates/theolib"]
+members = ["crates/theolib-core", "crates/theolib", "src-tauri"]
 resolver = "2"
 [profile.release]
 opt-level = 3
