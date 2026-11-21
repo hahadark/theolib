@@ -363,9 +363,10 @@ function renderBody(panel) {
 }
 function panelByIdLive(id) { return Layout.panelById(id); }
 
-// 주석 한 항목을 화면 조각으로.
-function noteHtml(n) {
-  return `<div class="note"><h4>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`;
+// 주석 한 항목을 화면 조각으로(절 범위 배지를 머리에 붙이고, 선택 절 항목은 왼쪽 색 띠).
+function noteHtml(n, current) {
+  const band = current ? ' current' : '';
+  return `<div class="note${band}"><h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`;
 }
 
 // 주석 목록을 대표 1개 / 다른 해설 / 장 단위 개요 3층으로 가른다.
@@ -499,9 +500,9 @@ function renderComm(panel) {
     } else {
       const mine = notes.filter((n) => n.comm_name === cur && !isHidden('s:' + n.comm));
       const { rep, others, overviews } = commLayers(mine, ref, ref.v == null);
-      body = rep ? noteHtml(rep) : '';
-      if (others.length) body += `<details class="note-more"><summary>이 절을 포함한 다른 해설 ${others.length}개</summary>${others.map(noteHtml).join('')}</details>`;
-      if (overviews.length) body += `<details class="note-more"><summary>여러 장에 걸친 큰 단락 개요 ${overviews.length}개</summary>${overviews.map(noteHtml).join('')}</details>`;
+      body = rep ? noteHtml(rep, true) : '';
+      if (others.length) body += `<details class="note-more"><summary><span class="mo">이 절을 포함한 다른 해설 ${others.length}개</span><span class="mo-sub">${esc(inVerseOrder(others).map(noteRange).join(' · '))}</span></summary>${others.map((n) => noteHtml(n)).join('')}</details>`;
+      if (overviews.length) body += `<details class="note-more"><summary><span class="mo">여러 장에 걸친 큰 단락 개요 ${overviews.length}개</span><span class="mo-sub">${esc(inVerseOrder(overviews).map(noteRange).join(' · '))}</span></summary>${overviews.map((n) => noteHtml(n)).join('')}</details>`;
       if (!body) body = '<span class="muted">이 자리의 주석이 없습니다.</span>';
     }
     if (!body) body = '<p class="muted">이 장의 주석이 없습니다.</p>';
@@ -1076,10 +1077,22 @@ async function openArticle(id, title) {
     '.comm-top .cv button{font-size:12px;padding:1px 8px;border-radius:0}',
     '.comm-top .cv button:first-child{border-radius:6px 0 0 6px}',
     '.comm-top .cv button:last-child{border-radius:0 6px 6px 0;border-left:none}',
-    '.cnote{scroll-margin-top:46px}',
-    '.cnote .cr{display:inline-block;font-size:12px;color:var(--acc);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-right:6px}',
-    '.cnote.hl{background:var(--sel);border-radius:6px;transition:background .3s}',
+    '.cnote{scroll-margin-top:46px;padding-left:8px;border-left:3px solid transparent}',
+    '.cr{display:inline-block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:600;color:var(--acc);border:1px solid var(--line);border-radius:4px;padding:0 6px;margin-right:7px;background:var(--bg)}',
+    '.cnote .cr{color:var(--acc)}',
+    '.cnote.hl{border-left:3px solid var(--acc);background:var(--sel);transition:background .3s,border-color .3s}',
     '.csec{font-weight:600;color:var(--acc);margin:10px 0 2px;padding-top:6px;border-top:1px solid var(--line)}',
+    // 절 모드: 선택 절의 대표 항목은 왼쪽 색 띠 + 살짝 배경, 접힌 묶음은 한 줄 요약처럼
+    '.note.current{border-left:3px solid var(--acc);padding-left:10px;background:var(--sel);border-radius:0 6px 6px 0;margin-left:-3px}',
+    '.note.current .cr{font-weight:700}',
+    'details.note-more{display:flex;flex-direction:column;border-top:1px solid var(--line);padding:4px 0;margin-top:2px}',
+    'details.note-more>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}',
+    'details.note-more>summary::-webkit-details-marker{display:none}',
+    'details.note-more>summary::before{content:"▸";font-size:12px;color:var(--acc);flex:none}',
+    'details.note-more[open]>summary::before{content:"▾"}',
+    'details.note-more>summary .mo{color:var(--acc);font-weight:600}',
+    'details.note-more>summary .mo-sub{color:var(--mut);font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}',
+    'details.note-more .note{margin-left:6px}',
   ].join('\n');
   document.head.appendChild(st);
 })();
