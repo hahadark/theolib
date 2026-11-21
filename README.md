@@ -70,3 +70,9 @@ theolib/
 | `db_sha256` | 푼 뒤 통합 DB 무결성 값 |
 
 그 밖에 `db_bytes`(푼 크기), `license`(근거), `contents`(항목 목록) 등을 함께 씁니다.
+
+## 글꼴
+
+- 앱에 글꼴 6종(나눔고딕·나눔명조·나눔바른고딕·나눔스퀘어·서울한강체·서울남산체)을 WOFF2 로 내장했습니다. 파일은 `ui/fonts`, 부르는 곳은 `ui/fonts.css` 입니다(원격·CDN 없음).
+- 출처: 나눔글꼴(NAVER, SIL OFL) · 서울서체(서울특별시, 공공누리 제1유형).
+- 라이선스 전문은 `ui/fonts/OFL-Nanum.txt`, 안내는 `ui/fonts/README-fonts.txt` 를 보세요.

@@ -1,0 +1,99 @@
+/* fonts.css — 앱에 내장한 글꼴(ui/fonts/*.woff2).
+   인터넷·CDN 을 쓰지 않고 앱 안의 파일만 부른다.
+   출처: 나눔글꼴(NAVER, SIL OFL 1.1) · 서울서체(서울특별시, 공공누리 제1유형) */
+
+/* ---- 나눔고딕 */
+@font-face {
+  font-family: '나눔고딕';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumGothic-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: '나눔고딕';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumGothic-Bold.woff2') format('woff2');
+}
+
+/* ---- 나눔명조 */
+@font-face {
+  font-family: '나눔명조';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumMyeongjo-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: '나눔명조';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumMyeongjo-Bold.woff2') format('woff2');
+}
+
+/* ---- 나눔바른고딕 */
+@font-face {
+  font-family: '나눔바른고딕';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumBarunGothic-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: '나눔바른고딕';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumBarunGothic-Bold.woff2') format('woff2');
+}
+
+/* ---- 나눔스퀘어 */
+@font-face {
+  font-family: '나눔스퀘어';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumSquare-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: '나눔스퀘어';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/NanumSquare-Bold.woff2') format('woff2');
+}
+
+/* ---- 서울한강체 */
+@font-face {
+  font-family: '서울한강체';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/SeoulHangang-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: '서울한강체';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/SeoulHangang-Bold.woff2') format('woff2');
+}
+
+/* ---- 서울남산체 */
+@font-face {
+  font-family: '서울남산체';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/SeoulNamsan-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: '서울남산체';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('fonts/SeoulNamsan-Bold.woff2') format('woff2');
+}

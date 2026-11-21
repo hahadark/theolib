@@ -122,3 +122,4 @@ mark { background: var(--hl, #ffe08a); }
 .format-pop .fp-common { border-top: 1px solid var(--line); padding-top: 8px; margin-bottom: 8px; }
 .format-pop .fp-vn label { margin-right: 8px; font-size: .867em; }
 .format-pop .fp-apply { margin-top: 8px; }
+.format-pop .fp-src { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--mut, #777); font-size: 11px; line-height: 1.5; }

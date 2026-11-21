@@ -1289,13 +1289,16 @@ let formatTarget = 'all'; // 'all' | panel id
 
 function fmtOpts(targetId) {
   const f = Fmt.target(targetId);
-  const avail = Fmt.availableFonts ? Fmt.availableFonts() : Fmt.FONT_CANDIDATES;
-  // 맨 위는 '시스템 기본'(-apple-system). 실제 설치된 글꼴만 나열한다.
-  const list = avail.filter((x) => x !== '-apple-system');
+  const app = Fmt.appFonts ? Fmt.appFonts() : [];
+  const avail = (Fmt.availableFonts ? Fmt.availableFonts() : Fmt.FONT_CANDIDATES).filter((x) => x !== '-apple-system');
+  // 맨 위는 '시스템 기본'(-apple-system), 그 다음 '앱 글꼴'(항상 보임), 그 다음 '이 컴퓨터 글꼴'(설치된 것만).
   const option = (val, label, cur) => `<option value="${esc(val)}" ${val === cur ? 'selected' : ''}>${esc(label)}</option>`;
-  let fonts = option('-apple-system', '시스템 기본', f.font) + list.map((x) => option(x, x, f.font)).join('');
-  // 현재값이 목록에 없으면(예: 이전 저장 글꼴이 지금 미설치) 그대로 보여준다.
-  if (f.font && !avail.includes(f.font) && f.font !== '-apple-system') fonts = option(f.font, f.font, f.font) + fonts;
+  // 현재값이 목록에 없으면(예: 이전 저장 글꼴이 지금 미설치) 그대로 보여 준다.
+  const known = ['-apple-system'].concat(app, avail);
+  let fonts = f.font && !known.includes(f.font) ? option(f.font, f.font, f.font) : '';
+  fonts += option('-apple-system', '시스템 기본', f.font);
+  fonts += `<optgroup label="앱 글꼴">` + app.map((x) => option(x, x, f.font)).join('') + `</optgroup>`;
+  if (avail.length) fonts += `<optgroup label="이 컴퓨터 글꼴">` + avail.map((x) => option(x, x, f.font)).join('') + `</optgroup>`;
   const vns = Fmt.VN_MODES.map((m) => `<label><input type="radio" name="vn" value="${m.id}" ${f.vn === m.id ? 'checked' : ''}>${m.name}</label>`).join(' ');
   return {
     f, fonts, vns,
@@ -1382,7 +1385,12 @@ function renderFormatHost() {
         Fmt.setTarget(tid, patch);
         renderAll();
       };
-      content.querySelector('.fp-font').onchange = applyNow;
+      content.querySelector('.fp-font').onchange = () => {
+        // 웹글꼴을 미리 불러 둔 뒤 적용한다(안 불렸어도 바로 모양이 바뀌게).
+        const v = content.querySelector('.fp-font').value;
+        if (Fmt.preloadFont) Fmt.preloadFont(v).then(applyNow);
+        applyNow();
+      };
       content.querySelector('.fp-size').oninput = applyNow;
       content.querySelector('.fp-line').oninput = applyNow;
       content.querySelector('.fp-letter').oninput = applyNow;
@@ -1437,6 +1445,12 @@ function renderFormatHost() {
 
     showTarget('body');
   }
+
+  // 글꼴 출처 표시(서랍 맨 아래 작은 글씨)
+  const srcLine = document.createElement('div');
+  srcLine.className = 'fp-src';
+  srcLine.textContent = '글꼴: 나눔글꼴(NAVER, SIL OFL) · 서울서체(서울특별시, 공공누리 제1유형)';
+  body.appendChild(srcLine);
 
   const head = formatHost.querySelector('.fp-head');
   head.querySelector('.fp-close').onclick = () => { formatHost.hidden = true; };
