@@ -32,11 +32,78 @@ pub struct FileDecl {
     pub schema: serde_json::Value,
     #[serde(default)]
     pub built_at: String,
+    /// 항목 목록(있으면 선택 화면에 쓴다): versions / code_versions / dicts / series / articles
+    #[serde(default)]
+    pub contents: Option<serde_json::Value>,
+    // 항목별 선언(layout: "items") 전용 칸
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub grp: String,
+    #[serde(default)]
+    pub rows: Option<i64>,
+    #[serde(default)]
+    pub pack: String,
+    #[serde(default)]
+    pub license: String,
+    #[serde(default)]
+    pub notes: Option<i64>,
+    #[serde(default)]
+    pub articles: Option<i64>,
+}
+
+/// 로컬 통합 DB에 넣은 항목 한 개의 기록.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ItemRec {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    pub grp: String,
+    pub sha256: String,
+    pub bytes: u64,
+    pub db_bytes: u64,
+    #[serde(default)]
+    pub license: String,
+    pub source: String,
+}
+
+/// 항목 종류 → 통합 DB 묶음 id (bible-i / orig-i / comm-i)
+pub fn item_pack(kind: &str) -> Option<&'static str> {
+    match kind {
+        "bible" => Some("bible-i"),
+        "code" | "lex" => Some("orig-i"),
+        "comm" => Some("comm-i"),
+        _ => None,
+    }
+}
+
+/// 항목 id(`bible:개역개정`)에서 DB 안의 키(번역본 id·사전 id·시리즈 id)
+pub fn item_key(id: &str) -> &str {
+    id.split_once(':').map(|x| x.1).unwrap_or(id)
+}
+
+/// 묶음 id 접두어로 종류를 판단한다: bible / orig / comm
+pub fn kind_of(id: &str) -> &'static str {
+    if id.starts_with("bible") {
+        "bible"
+    } else if id.starts_with("orig") {
+        "orig"
+    } else if id.starts_with("comm") {
+        "comm"
+    } else {
+        "other"
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Declaration {
     pub format: String,
+    #[serde(default)]
+    pub layout: String,
+    #[serde(default)]
+    pub title: String,
     #[serde(default)]
     pub updated: String,
     #[serde(default)]
@@ -52,6 +119,42 @@ pub struct State {
     /// 화면에 보여도 되는 출처 이름(GitHub 는 github.com/<owner>/<repo>, 그 밖에는 빈 문자열)
     #[serde(default)]
     pub origin: String,
+    /// 출처별 정보(여러 출처를 함께 쓴다)
+    #[serde(default)]
+    pub sources: Vec<SrcInfo>,
+    /// 숨긴 항목 키: `v:<번역본/원어 본문 id>`, `d:<사전 id>`, `s:<주석 시리즈 id>`
+    #[serde(default)]
+    pub hidden: Vec<String>,
+    /// 선택 안 한 자료를 지워 줄인 묶음(갱신 때 전체를 다시 받는다)
+    #[serde(default)]
+    pub pruned: Vec<String>,
+    /// 항목별로 받아 통합 DB에 넣은 항목들
+    #[serde(default)]
+    pub items: Vec<ItemRec>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SrcInfo {
+    pub key: String,
+    pub origin: String,
+    #[serde(default)]
+    pub title: String,
+    pub files: Vec<String>,
+}
+
+/// 출처 식별 키(주소 해시 앞 12자리). 키체인 항목 이름에 쓰며 주소·토큰은 담지 않는다.
+pub fn source_key(url: &str) -> String {
+    let id = match parse_github(url) {
+        Some((o, r, _, t)) => format!("github.com/{o}/{r}#{t}"),
+        None => url.split(['?', '#']).next().unwrap_or(url).to_string(),
+    };
+    hex(&Sha256::digest(id.as_bytes()))[..12].to_string()
+}
+
+static CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// 진행 중인 내려받기를 멈춘다(받은 부분은 남아 다음에 이어받는다).
+pub fn cancel() {
+    CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
 pub fn hex(b: &[u8]) -> String {
@@ -203,7 +306,11 @@ impl Ctx {
     }
 
     pub fn origin(&self) -> String {
-        self.gh.as_ref().map(|g| format!("github.com/{}/{}", g.owner, g.repo)).unwrap_or_default()
+        match &self.gh {
+            Some(g) => format!("github.com/{}/{}", g.owner, g.repo),
+            None if self.base.starts_with('/') => "내 폴더".to_string(),
+            None => String::new(),
+        }
     }
 
     /// 선언의 url(상대 또는 자산 이름) → (요청 주소, 헤더)
@@ -219,6 +326,10 @@ impl Ctx {
     }
 
     pub fn declaration(&self) -> Result<Declaration> {
+        if self.base.starts_with('/') {
+            let body = fs::read_to_string(&self.base).map_err(|_| anyhow::anyhow!("선언 파일을 읽지 못했습니다(파일 없음)."))?;
+            return parse_declaration(&body);
+        }
         let (url, h) = match &self.gh {
             None => (self.base.clone(), vec![]),
             Some(_) => self.resolve("theolib.json")?,
@@ -248,7 +359,8 @@ pub fn parse_declaration(body: &str) -> Result<Declaration> {
         bail!("지원하지 않는 선언 형식입니다: {}", d.format);
     }
     for f in &d.files {
-        if f.id.is_empty() || !f.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        let ok = if d.layout == "items" { !f.id.is_empty() && !f.id.contains(['/', '\\']) } else { !f.id.is_empty() && f.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') };
+        if !ok {
             bail!("선언의 파일 id가 올바르지 않습니다");
         }
     }
@@ -263,7 +375,7 @@ pub fn load_state(home: &Home, sid: &str) -> Result<State> {
     Ok(serde_json::from_slice(&fs::read(home.state_path(sid))?)?)
 }
 
-fn save_state(home: &Home, st: &State) -> Result<()> {
+pub(crate) fn save_state(home: &Home, st: &State) -> Result<()> {
     fs::create_dir_all(home.source_dir(SID))?;
     let p = home.state_path(SID);
     let tmp = p.with_extension("json.tmp");
@@ -306,6 +418,25 @@ fn sha_of_part(p: &Path) -> Result<(Sha256, u64)> {
 fn download(url: &str, hdrs: &Hdrs, gh: bool, f: &FileDecl, gz: &Path, prog: Progress) -> Result<Sha256> {
     let info = gz.with_extension("part.info");
     let label = format!("{} 받는 중", f.id);
+    if url.starts_with('/') {
+        // 폴더로 전달받은 파일: 복사하면서 해시 계산
+        let mut h = Sha256::new();
+        let mut rd = File::open(url).map_err(|_| anyhow::anyhow!("{}: 파일이 폴더에 없습니다", f.id))?;
+        let mut out = File::create(gz)?;
+        let (mut buf, mut done) = (vec![0u8; 256 << 10], 0u64);
+        loop {
+            let n = rd.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            h.update(&buf[..n]);
+            out.write_all(&buf[..n])?;
+            done += n as u64;
+            prog(&label, done, f.bytes);
+        }
+        out.flush()?;
+        return Ok(h);
+    }
     let mut etag = String::new();
     let mut have = 0u64;
     if gz.exists() {
@@ -355,6 +486,9 @@ fn download(url: &str, hdrs: &Hdrs, gh: bool, f: &FileDecl, gz: &Path, prog: Pro
         if n == 0 {
             break;
         }
+        if CANCEL.load(std::sync::atomic::Ordering::SeqCst) {
+            bail!("취소했습니다. 다시 받기를 누르면 이어받습니다.");
+        }
         h.update(&buf[..n]);
         out.write_all(&buf[..n])?;
         done += n as u64;
@@ -371,13 +505,28 @@ fn download(url: &str, hdrs: &Hdrs, gh: bool, f: &FileDecl, gz: &Path, prog: Pro
     Ok(h)
 }
 
+fn part_name(id: &str) -> String {
+    if id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        id.to_string()
+    } else {
+        format!("x{}", &hex(&Sha256::digest(id.as_bytes()))[..12])
+    }
+}
+
 /// 한 파일을 받아 검증한 뒤 원자적으로 교체한다. 하나라도 다르면 Err이고 기존 파일은 그대로다.
 fn install_file(home: &Home, ctx: &Ctx, f: &FileDecl, prog: Progress) -> Result<()> {
+    let db = fetch_db(home, ctx, f, prog)?;
+    replace(&db, &home.db_path(SID, &f.id))
+}
+
+/// 받아서 SHA-256 두 가지와 meta.format 을 확인한 푼 DB(.part 경로)를 돌려준다.
+fn fetch_db(home: &Home, ctx: &Ctx, f: &FileDecl, prog: Progress) -> Result<std::path::PathBuf> {
     let dir = home.source_dir(SID);
     fs::create_dir_all(&dir)?;
-    let gz = dir.join(format!("{}.db.gz.part", f.id));
+    let pn = part_name(&f.id);
+    let gz = dir.join(format!("{pn}.db.gz.part"));
     let info = gz.with_extension("part.info");
-    let db = dir.join(format!("{}.db.part", f.id));
+    let db = dir.join(format!("{pn}.db.part"));
     let res = (|| -> Result<()> {
         let (u, hd) = ctx.resolve(&f.url)?;
         let h = download(&u, &hd, ctx.gh.is_some(), f, &gz, prog)?;
@@ -414,7 +563,7 @@ fn install_file(home: &Home, ctx: &Ctx, f: &FileDecl, prog: Progress) -> Result<
     }
     let _ = fs::remove_file(&gz);
     let _ = fs::remove_file(&info);
-    replace(&db, &home.db_path(SID, &f.id))
+    Ok(db)
 }
 
 pub fn open_ro(p: &Path) -> Result<Connection> {
@@ -438,12 +587,20 @@ pub fn verify_db(p: &Path, f: &FileDecl) -> Result<()> {
     Ok(())
 }
 
-/// 출처 추가. `pick`이 None이면 모든 파일. 이미 있는 출처면 고른 파일을 추가·갱신한다.
+pub(crate) fn push_unique(v: &mut Vec<String>, x: &str) {
+    if !v.iter().any(|i| i == x) {
+        v.push(x.to_string());
+    }
+}
+
+/// 출처 추가(여러 출처를 함께 쓴다). `pick`이 None이면 모든 파일. `hide`는 선택하지 않은 항목 키(숨김).
+/// 같은 묶음 id 가 다른 출처에서 이미 설치돼 있으면 먼저 설치한 것을 그대로 두고 건너뛴다.
 /// 검색 색인은 따로 `search::build_index`로 만든다(백그라운드 가능).
-pub fn add(home: &Home, url: &str, pick: Option<&[String]>, prog: Progress) -> Result<State> {
+pub fn add(home: &Home, url: &str, pick: Option<&[String]>, hide: &[String], prog: Progress) -> Result<State> {
+    CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
     let ctx = Ctx::new(url)?;
     let decl = ctx.declaration()?;
-    let origin = ctx.origin();
+    let key = source_key(url);
     let ids: Vec<String> = match pick {
         Some(p) => {
             for i in p {
@@ -455,51 +612,343 @@ pub fn add(home: &Home, url: &str, pick: Option<&[String]>, prog: Progress) -> R
         }
         None => decl.files.iter().map(|f| f.id.clone()).collect(),
     };
-    let prev = load_state(home, SID).ok();
-    let mut installed = prev.map(|s| s.installed).unwrap_or_default();
-    secret::store(home, SID, url)?;
+    let mut st = load_state(home, SID).unwrap_or(State { decl: Declaration { format: FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] }, installed: vec![], origin: String::new(), sources: vec![], hidden: vec![], pruned: vec![], items: vec![] });
+    secret::store(home, &format!("src-{key}"), url)?;
     for id in &ids {
         let f = decl.files.iter().find(|f| &f.id == id).unwrap();
-        install_file(home, &ctx, f, prog)?;
-        if !installed.contains(id) {
-            installed.push(id.clone());
+        let owner = st.sources.iter().find(|s| s.files.contains(id)).map(|s| s.key.clone());
+        if matches!(&owner, Some(k) if *k != key) {
+            continue; // 다른 출처에 같은 묶음이 이미 있다
         }
-        save_state(home, &State { decl: decl.clone(), installed: installed.clone(), origin: origin.clone() })?;
+        install_file(home, &ctx, f, prog)?;
+        push_unique(&mut st.installed, id);
+        st.pruned.retain(|p| p != id);
+        match st.decl.files.iter_mut().find(|x| &x.id == id) {
+            Some(x) => *x = f.clone(),
+            None => st.decl.files.push(f.clone()),
+        }
+        if !st.sources.iter().any(|s| s.key == key) {
+            st.sources.push(SrcInfo { key: key.clone(), origin: ctx.origin(), title: decl.title.clone(), files: vec![] });
+        }
+        let si = st.sources.iter_mut().find(|s| s.key == key).unwrap();
+        si.title = decl.title.clone();
+        push_unique(&mut si.files, id);
+        st.decl.updated = decl.updated.clone();
+        st.decl.note = decl.note.clone();
+        st.origin = ctx.origin();
+        save_state(home, &st)?;
     }
-    let st = State { decl, installed, origin };
+    for k in hide {
+        push_unique(&mut st.hidden, k);
+    }
     save_state(home, &st)?;
     Ok(st)
 }
 
-/// 선언의 sha256이 바뀐 설치 파일만 다시 받는다. 돌려주는 값은 갱신한 파일 id.
+/// 선언의 sha256이 바뀐 설치 파일만 다시 받는다(출처마다). 돌려주는 값은 갱신한 파일 id.
 pub fn sync(home: &Home, prog: Progress) -> Result<Vec<String>> {
-    let url = secret::load(home, SID)?;
-    let old = load_state(home, SID)?;
-    let ctx = Ctx::new(&url)?;
-    let decl = ctx.declaration()?;
+    CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
+    let mut st = load_state(home, SID)?;
     let mut updated = vec![];
-    for id in &old.installed {
-        let Some(f) = decl.files.iter().find(|f| &f.id == id) else { continue };
-        let changed = old.decl.files.iter().find(|o| &o.id == id).map(|o| o.sha256 != f.sha256).unwrap_or(true);
-        if changed || !home.db_path(SID, id).exists() {
-            install_file(home, &ctx, f, prog)?;
-            updated.push(id.clone());
+    for si in st.sources.clone() {
+        if si.key == "local" {
+            continue; // 내 파일은 갱신 확인 대상이 아니다
         }
+        let url = secret::load(home, &format!("src-{}", si.key))?;
+        let ctx = Ctx::new(&url)?;
+        let decl = ctx.declaration()?;
+        for id in &si.files {
+            if let Some(rec) = st.items.iter().find(|r| &r.id == id).cloned() {
+                let Some(f) = decl.files.iter().find(|f| &f.id == id) else { continue };
+                if rec.sha256 != f.sha256 {
+                    install_item(home, &ctx, f, &si.key, &mut st, prog)?;
+                    updated.push(id.clone());
+                    save_state(home, &st)?;
+                }
+                continue;
+            }
+            let Some(f) = decl.files.iter().find(|f| &f.id == id) else { continue };
+            let old = st.decl.files.iter().find(|o| &o.id == id);
+            let changed = old.map(|o| o.sha256 != f.sha256).unwrap_or(true);
+            let pruned = st.pruned.contains(id);
+            if changed || !home.db_path(SID, id).exists() {
+                install_file(home, &ctx, f, prog)?;
+                st.pruned.retain(|p| p != id);
+                if let Some(x) = st.decl.files.iter_mut().find(|x| &x.id == id) {
+                    *x = f.clone();
+                }
+                updated.push(id.clone());
+                save_state(home, &st)?;
+            } else if pruned {
+                // 지워 줄인 묶음은 선언이 같으면 그대로 둔다(바뀌면 위에서 전체를 다시 받는다)
+            }
+        }
+        st.decl.updated = decl.updated.clone();
     }
-    let mut installed = old.installed.clone();
-    installed.retain(|i| decl.files.iter().any(|f| &f.id == i));
-    save_state(home, &State { decl, installed, origin: old.origin.clone() })?;
+    save_state(home, &st)?;
     Ok(updated)
+}
+
+/// 묶음 하나를 지운다(DB 파일). 검색 색인은 `search::build_index`가 정리한다.
+pub fn remove_pack(home: &Home, id: &str) -> Result<()> {
+    if id.is_empty() || id.contains(['/', '\\', '.']) {
+        bail!("묶음 id가 올바르지 않습니다");
+    }
+    let mut st = load_state(home, SID)?;
+    let _ = fs::remove_file(home.db_path(SID, id));
+    st.installed.retain(|i| i != id);
+    st.pruned.retain(|i| i != id);
+    st.decl.files.retain(|f| f.id != id);
+    for s in &mut st.sources {
+        s.files.retain(|f| f != id);
+    }
+    let gone: Vec<String> = st.sources.iter().filter(|s| s.files.is_empty()).map(|s| s.key.clone()).collect();
+    for k in gone {
+        let _ = secret::delete(home, &format!("src-{k}"));
+    }
+    st.sources.retain(|s| !s.files.is_empty());
+    save_state(home, &st)
+}
+
+/// 숨김 항목 목록을 통째로 바꾼다.
+pub fn set_hidden(home: &Home, hidden: Vec<String>) -> Result<()> {
+    let mut st = load_state(home, SID)?;
+    st.hidden = hidden;
+    save_state(home, &st)
 }
 
 /// 출처의 DB, 색인, 상태, 저장된 주소를 모두 지운다.
 pub fn remove(home: &Home) -> Result<()> {
+    if let Ok(st) = load_state(home, SID) {
+        for s in st.sources {
+            let _ = secret::delete(home, &format!("src-{}", s.key));
+        }
+    }
     let d = home.source_dir(SID);
     if d.exists() {
         fs::remove_dir_all(&d)?;
     }
-    secret::delete(home, SID)?;
+    let _ = secret::delete(home, SID);
     Ok(())
+}
+
+/// 숨긴 항목의 행을 DB에서 지워 용량을 줄인다. 지운 묶음은 갱신 때 전체를 다시 받는다.
+pub fn prune_hidden(home: &Home) -> Result<u64> {
+    let mut st = load_state(home, SID)?;
+    let before: u64 = st.installed.iter().filter_map(|i| fs::metadata(home.db_path(SID, i)).ok()).map(|m| m.len()).sum();
+    for id in st.installed.clone() {
+        let p = home.db_path(SID, &id);
+        if !p.exists() {
+            continue;
+        }
+        let c = Connection::open(&p)?;
+        let mut changed = false;
+        for k in &st.hidden {
+            let Some((t, v)) = k.split_once(':') else { continue };
+            let n = match (kind_of(&id), t) {
+                ("bible", "v") => c.execute("DELETE FROM verse WHERE version=?", [v])? + c.execute("DELETE FROM version WHERE id=?", [v])?,
+                ("orig", "v") => c.execute("DELETE FROM code_verse WHERE version=?", [v])? + c.execute("DELETE FROM code_version WHERE id=?", [v])?,
+                ("orig", "d") => c.execute("DELETE FROM lex WHERE dict=?", [v])?,
+                ("comm", "s") => c.execute("DELETE FROM note WHERE series=?", [v])? + c.execute("DELETE FROM article WHERE series=?", [v])? + c.execute("DELETE FROM comm_verse WHERE comm=?", [v])? + c.execute("DELETE FROM series WHERE id=?", [v])?,
+                _ => 0,
+            };
+            changed |= n > 0;
+        }
+        if changed {
+            c.execute_batch("VACUUM")?;
+            push_unique(&mut st.pruned, &id);
+        }
+    }
+    let after: u64 = st.installed.iter().filter_map(|i| fs::metadata(home.db_path(SID, i)).ok()).map(|m| m.len()).sum();
+    save_state(home, &st)?;
+    Ok(before.saturating_sub(after))
+}
+
+const SCHEMA_BIBLE: &str = "CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS version(id TEXT PRIMARY KEY, name TEXT, grp TEXT, ord INTEGER, descr TEXT);
+CREATE TABLE IF NOT EXISTS verse(version TEXT, book INTEGER, chapter INTEGER, verse INTEGER, text TEXT);
+CREATE INDEX IF NOT EXISTS verse_loc ON verse(version, book, chapter, verse);";
+const SCHEMA_ORIG: &str = "CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS code_version(id TEXT PRIMARY KEY, name TEXT, ord INTEGER);
+CREATE TABLE IF NOT EXISTS code_verse(version TEXT, book INTEGER, chapter INTEGER, verse INTEGER, text TEXT);
+CREATE TABLE IF NOT EXISTS lex(dict TEXT, code TEXT, text TEXT);
+CREATE INDEX IF NOT EXISTS code_loc ON code_verse(version, book, chapter, verse);
+CREATE INDEX IF NOT EXISTS lex_code ON lex(dict, code);";
+const SCHEMA_COMM: &str = "CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS series(id TEXT PRIMARY KEY, name TEXT, kind TEXT, unit TEXT, types TEXT, ord INTEGER, coverage TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS note(id INTEGER PRIMARY KEY, series TEXT, bk INTEGER, seq INTEGER, ch1 INTEGER, v1 INTEGER, ch2 INTEGER, v2 INTEGER, start_key INTEGER, end_key INTEGER, ref TEXT, title TEXT, text TEXT, book_id TEXT, p INTEGER);
+CREATE TABLE IF NOT EXISTS article(id INTEGER PRIMARY KEY, series TEXT, section TEXT, ord INTEGER, title TEXT, kind TEXT, text TEXT, book_id TEXT, p1 INTEGER, p2 INTEGER);
+CREATE TABLE IF NOT EXISTS comm_verse(comm TEXT, book INTEGER, chapter INTEGER, verse INTEGER, html TEXT);
+CREATE INDEX IF NOT EXISTS note_loc ON note(series, bk, start_key);
+CREATE INDEX IF NOT EXISTS comm_loc ON comm_verse(comm, book, chapter, verse);";
+
+pub(crate) fn ensure_pack_db(home: &Home, pack: &str) -> Result<()> {
+    let p = home.db_path(SID, pack);
+    fs::create_dir_all(home.source_dir(SID))?;
+    let c = Connection::open(&p)?;
+    c.execute_batch(match kind_of(pack) {
+        "bible" => SCHEMA_BIBLE,
+        "orig" => SCHEMA_ORIG,
+        _ => SCHEMA_COMM,
+    })?;
+    c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('format',?)", [FORMAT])?;
+    c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('pack',?)", [pack])?;
+    Ok(())
+}
+
+/// 항목의 행을 통합 DB에서 지운다(같은 id 로 다시 넣기 전, 또는 삭제).
+pub(crate) fn delete_rows(c: &Connection, kind: &str, key: &str) -> Result<()> {
+    match kind {
+        "bible" => {
+            c.execute("DELETE FROM verse WHERE version=?", [key])?;
+            c.execute("DELETE FROM version WHERE id=?", [key])?;
+        }
+        "code" => {
+            c.execute("DELETE FROM code_verse WHERE version=?", [key])?;
+            c.execute("DELETE FROM code_version WHERE id=?", [key])?;
+        }
+        "lex" => {
+            c.execute("DELETE FROM lex WHERE dict=?", [key])?;
+        }
+        "comm" => {
+            c.execute("DELETE FROM note WHERE series=?", [key])?;
+            c.execute("DELETE FROM article WHERE series=?", [key])?;
+            c.execute("DELETE FROM comm_verse WHERE comm=?", [key])?;
+            c.execute("DELETE FROM series WHERE id=?", [key])?;
+        }
+        _ => bail!("알 수 없는 항목 종류: {kind}"),
+    }
+    Ok(())
+}
+
+/// 받은 항목 DB(.part)의 행을 통합 DB에 한 트랜잭션으로 넣는다(같은 항목이 있으면 교체).
+fn merge_item(home: &Home, f: &FileDecl, item_db: &Path) -> Result<()> {
+    let pack = item_pack(&f.kind).ok_or_else(|| anyhow::anyhow!("{}: 알 수 없는 항목 종류 {}", f.id, f.kind))?;
+    ensure_pack_db(home, pack)?;
+    let c = Connection::open(home.db_path(SID, pack))?;
+    c.execute("ATTACH DATABASE ?1 AS it", [item_db.to_string_lossy().as_ref()])?;
+    c.execute_batch("BEGIN")?;
+    let r: Result<()> = (|| {
+        match f.kind.as_str() {
+            "bible" => {
+                let ids: Vec<String> = c.prepare("SELECT id FROM it.version")?.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+                for i in &ids {
+                    delete_rows(&c, "bible", i)?;
+                }
+                c.execute_batch("INSERT INTO version(id,name,grp,ord,descr) SELECT id,name,grp,ord,descr FROM it.version; INSERT INTO verse(version,book,chapter,verse,text) SELECT version,book,chapter,verse,text FROM it.verse;")?;
+            }
+            "code" => {
+                let ids: Vec<String> = c.prepare("SELECT id FROM it.code_version")?.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+                for i in &ids {
+                    delete_rows(&c, "code", i)?;
+                }
+                c.execute_batch("INSERT INTO code_version(id,name,ord) SELECT id,name,ord FROM it.code_version; INSERT INTO code_verse(version,book,chapter,verse,text) SELECT version,book,chapter,verse,text FROM it.code_verse;")?;
+            }
+            "lex" => {
+                c.execute_batch("DELETE FROM lex WHERE dict IN (SELECT DISTINCT dict FROM it.lex); INSERT INTO lex(dict,code,text) SELECT dict,code,text FROM it.lex;")?;
+            }
+            _ => {
+                let ids: Vec<String> = c.prepare("SELECT id FROM it.series")?.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+                for i in &ids {
+                    delete_rows(&c, "comm", i)?;
+                }
+                c.execute_batch(
+                    "INSERT INTO series(id,name,kind,unit,types,ord,coverage,note) SELECT id,name,kind,unit,types,ord,coverage,note FROM it.series;
+                     INSERT INTO note(series,bk,seq,ch1,v1,ch2,v2,start_key,end_key,ref,title,text,book_id,p) SELECT series,bk,seq,ch1,v1,ch2,v2,start_key,end_key,ref,title,text,book_id,p FROM it.note;
+                     INSERT INTO article(series,section,ord,title,kind,text,book_id,p1,p2) SELECT series,section,ord,title,kind,text,book_id,p1,p2 FROM it.article;
+                     INSERT INTO comm_verse(comm,book,chapter,verse,html) SELECT comm,book,chapter,verse,html FROM it.comm_verse;",
+                )?;
+            }
+        }
+        Ok(())
+    })();
+    match r {
+        Ok(()) => c.execute_batch("COMMIT")?,
+        Err(e) => {
+            let _ = c.execute_batch("ROLLBACK");
+            return Err(e);
+        }
+    }
+    let _ = c.execute_batch("DETACH DATABASE it");
+    Ok(())
+}
+
+fn install_item(home: &Home, ctx: &Ctx, f: &FileDecl, key: &str, st: &mut State, prog: Progress) -> Result<()> {
+    let pack = item_pack(&f.kind).ok_or_else(|| anyhow::anyhow!("{}: 알 수 없는 항목 종류 {}", f.id, f.kind))?;
+    let db = fetch_db(home, ctx, f, prog)?;
+    let r = merge_item(home, f, &db);
+    let _ = fs::remove_file(&db);
+    r?;
+    st.items.retain(|x| x.id != f.id);
+    st.items.push(ItemRec { id: f.id.clone(), kind: f.kind.clone(), name: if f.name.is_empty() { item_key(&f.id).to_string() } else { f.name.clone() }, grp: f.grp.clone(), sha256: f.sha256.clone(), bytes: f.bytes, db_bytes: f.db_bytes, license: f.license.clone(), source: key.to_string() });
+    push_unique(&mut st.installed, pack);
+    Ok(())
+}
+
+/// 항목별 선언(layout: items)에서 고른 항목만 받아 통합 DB에 넣는다. 이미 같은 판이 있으면 건너뛴다.
+/// 같은 id 가 다른 출처에서 먼저 들어와 있으면 먼저 받은 것을 쓴다.
+pub fn add_items(home: &Home, url: &str, ids: &[String], prog: Progress) -> Result<State> {
+    CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
+    let ctx = Ctx::new(url)?;
+    let decl = ctx.declaration()?;
+    if decl.layout != "items" {
+        bail!("이 선언은 항목별 형식이 아닙니다(묶음형).");
+    }
+    let key = source_key(url);
+    let mut st = load_state(home, SID).unwrap_or(State { decl: Declaration { format: FORMAT.into(), layout: String::new(), title: String::new(), updated: String::new(), note: String::new(), files: vec![] }, installed: vec![], origin: String::new(), sources: vec![], hidden: vec![], pruned: vec![], items: vec![] });
+    secret::store(home, &format!("src-{key}"), url)?;
+    for id in ids {
+        let f = decl.files.iter().find(|f| &f.id == id).ok_or_else(|| anyhow::anyhow!("선언에 없는 항목: {id}"))?;
+        if let Some(r) = st.items.iter().find(|r| &r.id == id) {
+            if r.source != key || r.sha256 == f.sha256 {
+                continue;
+            }
+        }
+        install_item(home, &ctx, f, &key, &mut st, prog)?;
+        if !st.sources.iter().any(|s| s.key == key) {
+            st.sources.push(SrcInfo { key: key.clone(), origin: ctx.origin(), title: decl.title.clone(), files: vec![] });
+        }
+        let si = st.sources.iter_mut().find(|s| s.key == key).unwrap();
+        si.title = decl.title.clone();
+        push_unique(&mut si.files, id);
+        st.origin = ctx.origin();
+        st.decl.updated = decl.updated.clone();
+        save_state(home, &st)?;
+    }
+    save_state(home, &st)?;
+    Ok(st)
+}
+
+/// 항목 삭제 = 통합 DB에서 그 항목의 행 삭제. 검색 색인은 `search::build_index`가 그 항목 분만 정리한다.
+pub fn remove_items(home: &Home, ids: &[String]) -> Result<()> {
+    let mut st = load_state(home, SID)?;
+    for id in ids {
+        let Some(r) = st.items.iter().find(|r| &r.id == id).cloned() else { continue };
+        let pack = item_pack(&r.kind).unwrap_or("bible-i");
+        if home.db_path(SID, pack).exists() {
+            let c = Connection::open(home.db_path(SID, pack))?;
+            delete_rows(&c, &r.kind, item_key(id))?;
+        }
+        st.items.retain(|x| &x.id != id);
+        for s in &mut st.sources {
+            s.files.retain(|f| f != id);
+        }
+    }
+    for pack in ["bible-i", "orig-i", "comm-i"] {
+        let has = st.items.iter().any(|r| item_pack(&r.kind) == Some(pack));
+        if !has && st.installed.iter().any(|i| i == pack) {
+            let _ = fs::remove_file(home.db_path(SID, pack));
+            st.installed.retain(|i| i != pack);
+        } else if has && home.db_path(SID, pack).exists() {
+            let _ = Connection::open(home.db_path(SID, pack)).and_then(|c| c.execute_batch("VACUUM"));
+        }
+    }
+    let gone: Vec<String> = st.sources.iter().filter(|s| s.files.is_empty()).map(|s| s.key.clone()).collect();
+    for k in gone {
+        let _ = secret::delete(home, &format!("src-{k}"));
+    }
+    st.sources.retain(|s| !s.files.is_empty());
+    save_state(home, &st)
 }
 
 #[cfg(test)]

@@ -22,6 +22,8 @@ struct Progress {
 #[derive(Serialize)]
 struct Preview {
     origin: String,
+    layout: String,
+    title: String,
     updated: String,
     note: String,
     files: Vec<source::FileDecl>,
@@ -37,7 +39,7 @@ async fn preview_source(url: String) -> R<Preview> {
     tauri::async_runtime::spawn_blocking(move || {
         let ctx = source::Ctx::new(url.trim()).map_err(e)?;
         let d = ctx.declaration().map_err(e)?;
-        Ok(Preview { origin: ctx.origin(), updated: d.updated, note: d.note, files: d.files })
+        Ok(Preview { origin: ctx.origin(), layout: d.layout, title: d.title, updated: d.updated, note: d.note, files: d.files })
     })
     .await
     .map_err(e)?
@@ -88,12 +90,102 @@ async fn add_source(app: AppHandle, url: String, files: Vec<String>) -> R<source
         let mut p = |l: &str, d: u64, t: u64| {
             let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
         };
-        source::add(&h, url.trim(), Some(&files), &mut p).map_err(e)
+        source::add(&h, url.trim(), Some(&files), &[], &mut p).map_err(e)
     })
     .await
     .map_err(e)??;
     start_index(app);
     Ok(r)
+}
+
+#[tauri::command]
+async fn add_items(app: AppHandle, url: String, ids: Vec<String>) -> R<source::State> {
+    let h = home()?;
+    let a = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        let mut p = |l: &str, d: u64, t: u64| {
+            let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
+        };
+        source::add_items(&h, url.trim(), &ids, &mut p).map_err(e)
+    })
+    .await
+    .map_err(e)??;
+    start_index(app);
+    Ok(r)
+}
+
+#[tauri::command]
+fn remove_items(app: AppHandle, ids: Vec<String>) -> R<()> {
+    source::remove_items(&home()?, &ids).map_err(e)?;
+    start_index(app);
+    Ok(())
+}
+
+/// 파일(여러 개) 또는 폴더를 고르는 대화상자. 고른 경로 목록(취소하면 빈 목록).
+#[tauri::command]
+async fn pick_paths(app: AppHandle, folder: bool) -> R<Vec<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        let d = app.dialog().file();
+        let v: Vec<String> = if folder {
+            d.blocking_pick_folder().and_then(|p| p.into_path().ok()).map(|p| vec![p.to_string_lossy().into_owned()]).unwrap_or_default()
+        } else {
+            d.blocking_pick_files().unwrap_or_default().into_iter().filter_map(|p| p.into_path().ok()).map(|p| p.to_string_lossy().into_owned()).collect()
+        };
+        Ok(v)
+    })
+    .await
+    .map_err(e)?
+}
+
+#[derive(Serialize)]
+struct LocalScan {
+    /// 이 앱의 항목 선언(theolib.json)이 든 폴더면 그 선언 경로
+    declaration: Option<String>,
+    items: Vec<theolib_core::localfiles::LocalItem>,
+}
+
+#[tauri::command]
+async fn scan_local(paths: Vec<String>) -> R<LocalScan> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let ps: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+        for p in &ps {
+            let d = if p.is_dir() { p.join("theolib.json") } else { p.clone() };
+            if d.file_name().map(|n| n == "theolib.json").unwrap_or(false) && d.exists() {
+                return Ok(LocalScan { declaration: Some(d.to_string_lossy().into_owned()), items: vec![] });
+            }
+        }
+        Ok(LocalScan { declaration: None, items: theolib_core::localfiles::scan(&ps) })
+    })
+    .await
+    .map_err(e)?
+}
+
+#[tauri::command]
+async fn import_local(app: AppHandle, items: Vec<theolib_core::localfiles::LocalItem>, replace: bool) -> R<(Vec<String>, Vec<String>)> {
+    let h = home()?;
+    let a = app.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        let mut p = |l: &str, d: u64, t: u64| {
+            let _ = a.emit("progress", Progress { label: l.into(), done: d, total: t });
+        };
+        theolib_core::localfiles::import(&h, &items, replace, &mut p).map_err(e)
+    })
+    .await
+    .map_err(e)??;
+    start_index(app);
+    Ok(r)
+}
+
+#[tauri::command]
+fn cancel_download() {
+    source::cancel();
+}
+
+/// 저작권 자유 기본 자료 저장소 주소(공개, 토큰 없음). THEOLIB_FREE_URL 은 시험용.
+#[tauri::command]
+fn free_url() -> String {
+    std::env::var("THEOLIB_FREE_URL").unwrap_or_else(|_| "https://github.com/hahadark/theolib-free".into())
 }
 
 #[tauri::command]
@@ -261,21 +353,22 @@ fn selftest_report(text: String) {
 const SELFTEST_JS: &str = include_str!("../selftest.js");
 
 pub fn run() {
-    let b = tauri::Builder::default();
+    let b = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
     #[cfg(feature = "selftest")]
     let b = b.on_page_load(|w, _| {
         if let Ok(url) = std::env::var("THEOLIB_SELFTEST_URL") {
-            let _ = w.eval(format!("window.__SELFTEST_URL={};{}", serde_json::to_string(&url).unwrap(), SELFTEST_JS));
+            let local = std::env::var("THEOLIB_SELFTEST_LOCAL").unwrap_or_default();
+            let _ = w.eval(format!("window.__SELFTEST_URL={};window.__SELFTEST_LOCAL={};{}", serde_json::to_string(&url).unwrap(), serde_json::to_string(&local).unwrap(), SELFTEST_JS));
         }
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body, selftest_report
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body, selftest_report
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");

@@ -60,7 +60,7 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Source { c: Src::Add { url, files } } => {
             let mut p = progress();
-            let st = source::add(&home, &url, files.as_deref(), &mut p)?;
+            let st = source::add(&home, &url, files.as_deref(), &[], &mut p)?;
             println!("출처 추가: 받은 파일: {}", st.installed.join(", "));
             search::build_index(&home, &mut p)?;
             println!("검색 색인 완료");

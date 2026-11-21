@@ -87,7 +87,7 @@ fn shared() -> &'static Shared {
         let home = Home::at(t.path().join("home"));
         let url = serve(real_source(), Arc::new(Cfg::default()));
         let t0 = Instant::now();
-        let st = source::add(&home, &url, None, &mut |_, _, _| {}).unwrap();
+        let st = source::add(&home, &url, None, &[], &mut |_, _, _| {}).unwrap();
         assert_eq!(st.installed.len(), 5);
         search::build_index(&home, &mut |_, _, _| {}).unwrap();
         Shared { _t: t, home, install_secs: t0.elapsed().as_secs_f64() }
@@ -209,7 +209,7 @@ fn tampered_files_rejected() {
         std::fs::write(&p, b).unwrap();
     });
     let home = Home::at(t.path().join("home"));
-    let e = source::add(&home, &url, Some(&["bible-etc".to_string()]), &mut |_, _, _| {}).unwrap_err().to_string();
+    let e = source::add(&home, &url, Some(&["bible-etc".to_string()]), &[], &mut |_, _, _| {}).unwrap_err().to_string();
     println!("변조 거부 문구: {e}");
     assert!(e.contains("SHA-256"));
     assert!(!home.db_path(source::SID, "bible-etc").exists());
@@ -228,7 +228,7 @@ fn tampered_files_rejected() {
     let all: Vec<String> = source::fetch_declaration(&url).unwrap().files.iter().map(|f| f.id.clone()).collect();
     let mut any_err = false;
     for id in all.iter().filter(|i| *i == "bible-etc" || *i == "orig") {
-        if let Err(e) = source::add(&home, &url, Some(&[id.clone()]), &mut |_, _, _| {}) {
+        if let Err(e) = source::add(&home, &url, Some(&[id.clone()]), &[], &mut |_, _, _| {}) {
             assert!(e.to_string().contains("SHA-256"));
             assert!(!home.db_path(source::SID, id).exists());
             any_err = true;
@@ -244,13 +244,13 @@ fn resume_after_cut() {
     cfg.cut_once.lock().unwrap().insert("theolib-bible-etc.db.gz".into(), 5_000_000);
     let home = Home::at(t.path().join("home"));
     let ids = ["bible-etc".to_string()];
-    let e = source::add(&home, &url, Some(&ids), &mut |_, _, _| {}).unwrap_err().to_string();
+    let e = source::add(&home, &url, Some(&ids), &[], &mut |_, _, _| {}).unwrap_err().to_string();
     println!("끊김 문구: {e}");
     assert!(e.contains("이어받") && !home.db_path(source::SID, "bible-etc").exists());
     let part = home.source_dir(source::SID).join("bible-etc.db.gz.part");
     assert!(part.exists() && std::fs::metadata(&part).unwrap().len() >= 4_000_000);
     let mut first = u64::MAX;
-    source::add(&home, &url, Some(&ids), &mut |l, d, _| {
+    source::add(&home, &url, Some(&ids), &[], &mut |l, d, _| {
         if l.contains("받는 중") && first == u64::MAX {
             first = d;
         }
@@ -291,12 +291,12 @@ fn partial_install_and_remove() {
     unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
     let (t, url, _) = small_server(|_| {});
     let home = Home::at(t.path().join("home"));
-    source::add(&home, &url, Some(&["orig".to_string()]), &mut |_, _, _| {}).unwrap();
+    source::add(&home, &url, Some(&["orig".to_string()]), &[], &mut |_, _, _| {}).unwrap();
     let r = Reader::open(&home).unwrap();
     assert!(r.versions().unwrap().iter().all(|v| v.file == "orig"));
     assert!(!r.lex("G25").unwrap().is_empty());
     assert!(r.chapter(44, 24, &["개역개정S".into()]).unwrap().len() > 10);
-    source::add(&home, &url, Some(&["bible-etc".to_string()]), &mut |_, _, _| {}).unwrap();
+    source::add(&home, &url, Some(&["bible-etc".to_string()]), &[], &mut |_, _, _| {}).unwrap();
     assert!(search::status(&home).pending.contains(&"bible-etc".to_string()));
     search::build_index(&home, &mut |_, _, _| {}).unwrap();
     assert!(search::status(&home).ready);
@@ -305,4 +305,286 @@ fn partial_install_and_remove() {
     source::remove(&home).unwrap();
     assert!(!home.source_dir(source::SID).exists());
     assert!(source::list_sources(&home).is_empty());
+}
+
+fn free_source() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../free-source")
+}
+
+#[test]
+fn free_pack_kjv_and_strong() {
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let home = Home::at(t.path().join("home"));
+    let url = serve(free_source(), Arc::new(Cfg::default()));
+    let d = source::fetch_declaration(&url).unwrap();
+    assert!(d.title.contains("기본 자료"));
+    assert!(d.files.iter().all(|f| f.contents.is_some()));
+    let t0 = Instant::now();
+    let st = source::add(&home, &url, None, &[], &mut |_, _, _| {}).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    println!("기본 자료 설치+색인 {:.1}초, 묶음 {:?}", t0.elapsed().as_secs_f64(), st.installed);
+    let r = Reader::open(&home).unwrap();
+    let vs = r.versions().unwrap();
+    println!("기본 자료 번역본 {:?}", vs.iter().map(|v| v.id.as_str()).collect::<Vec<_>>());
+    let rows = r.chapter(44, 24, &["개역한글".into(), "KJV1769".into(), "KJV_S".into()]).unwrap();
+    let v10 = rows.iter().find(|x| x.v == 10).unwrap();
+    assert!(v10.texts[0].1.starts_with("총독이 바울에게"));
+    assert!(v10.texts[1].1.to_lowercase().contains("governor"));
+    let toks = theolib_core::reader::code_tokens(&v10.texts[2].1);
+    assert!(toks.iter().any(|x| x.1.as_deref() == Some("G611")));
+    let l = r.lex("G611").unwrap();
+    assert_eq!(l.len(), 1);
+    assert_eq!(l[0].dict, "HebGrkEn");
+    let items = r.items().unwrap();
+    let ko = items.iter().find(|p| p.pack == "bible-free").unwrap().items.iter().find(|i| i.key == "v:개역한글").unwrap();
+    assert!(ko.license.contains("보호기간"));
+    let b = search::search(&home, "governor", "bible", &["KJV1769".into()], 10).unwrap();
+    assert!(!b.is_empty());
+    source::set_hidden(&home, vec!["v:KJV1769".into(), "d:HebGrkEn".into()]).unwrap();
+    let r = Reader::open(&home).unwrap();
+    assert!(!r.versions().unwrap().iter().any(|v| v.id == "KJV1769"));
+    assert!(r.lex("G611").unwrap().is_empty());
+    let b = search::search(&home, "governor", "bible", &["KJV1769".into()], 10).unwrap();
+    assert!(b.iter().all(|h| h.src != "KJV1769"));
+    let before = std::fs::metadata(home.db_path(source::SID, "bible-free")).unwrap().len();
+    let saved = source::prune_hidden(&home).unwrap();
+    let after = std::fs::metadata(home.db_path(source::SID, "bible-free")).unwrap().len();
+    println!("지워 줄이기: {before} → {after} 바이트 (줄어든 합계 {saved})");
+    assert!(after < before && saved > 0);
+    assert!(source::load_state(&home, source::SID).unwrap().pruned.contains(&"bible-free".to_string()));
+}
+
+#[test]
+fn comm_only_and_merge_sources() {
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let home = Home::at(t.path().join("home"));
+    let real = serve(real_source(), Arc::new(Cfg::default()));
+    let free = serve(free_source(), Arc::new(Cfg::default()));
+    source::add(&home, &real, Some(&["comm".to_string()]), &["s:BST주석".to_string()], &mut |_, _, _| {}).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    assert!(!r.has("bible") && r.versions().unwrap().is_empty());
+    let h = search::search(&home, "뉴산토스", "comm", &[], 20).unwrap();
+    assert!(h.iter().any(|x| x.bk == 44 && x.ch == 24 && x.v == 10));
+    assert!(!r.comm_names().unwrap().iter().any(|c| c.0 == "BST주석"));
+    source::add(&home, &free, None, &[], &mut |_, _, _| {}).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let st = source::load_state(&home, source::SID).unwrap();
+    assert_eq!(st.sources.len(), 2);
+    println!("합친 출처 {}개, 묶음 {:?}", st.sources.len(), st.installed);
+    let r = Reader::open(&home).unwrap();
+    assert!(r.versions().unwrap().iter().any(|v| v.id == "KJV1611"));
+    assert!(!r.comm_for(44, 24, Some(10)).unwrap().is_empty());
+    let st_txt = std::fs::read_to_string(home.state_path(source::SID)).unwrap();
+    assert!(!st_txt.contains("127.0.0.1"));
+    assert!(source::sync(&home, &mut |_, _, _| {}).unwrap().is_empty());
+    source::remove_pack(&home, "bible-free").unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    assert!(!home.db_path(source::SID, "bible-free").exists());
+}
+
+/// 실제 GitHub 릴리스 시험: THEOLIB_TEST_GH_URL 이 있을 때만(토큰이 든 주소라 값은 출력하지 않는다).
+#[test]
+fn github_comm_only() {
+    let Ok(url) = std::env::var("THEOLIB_TEST_GH_URL") else { return };
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let home = Home::at(t.path().join("home"));
+    let t0 = Instant::now();
+    let d = source::fetch_declaration(&url).unwrap();
+    assert!(d.files.iter().any(|f| f.id == "comm" && f.contents.is_some()));
+    source::add(&home, &url, Some(&["comm".to_string()]), &[], &mut |_, _, _| {}).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let h = search::search(&home, "뉴산토스", "comm", &[], 20).unwrap();
+    println!("GitHub 주석 묶음만 받기+색인 {:.1}초, 주석 검색 {}건", t0.elapsed().as_secs_f64(), h.len());
+    assert!(!h.is_empty());
+    let state = std::fs::read_to_string(home.state_path(source::SID)).unwrap();
+    assert!(state.contains("github.com/hahadark/theolib-data") && !state.contains('@'));
+}
+
+fn items_dir(n: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../").join(n)
+}
+
+fn s(x: &str) -> String {
+    x.to_string()
+}
+
+#[test]
+fn items_free_add_remove_incremental() {
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let home = Home::at(t.path().join("home"));
+    let url = serve(items_dir("items-free"), Arc::new(Cfg::default()));
+    let d = source::fetch_declaration(&url).unwrap();
+    assert_eq!(d.layout, "items");
+    assert_eq!(d.files.len(), 9);
+    // 번역본 1종만 받기
+    source::add_items(&home, &url, &[s("bible:개역한글")], &mut |_, _, _| {}).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    assert_eq!(r.versions().unwrap().len(), 1);
+    assert_eq!(r.chapter(44, 24, &[s("개역한글")]).unwrap().iter().find(|x| x.v == 10).unwrap().texts[0].1.starts_with("총독이 바울에게"), true);
+    // 추가로 2종 더 받기 → 색인은 새 항목 분만
+    source::add_items(&home, &url, &[s("bible:KJV1769"), s("code:KJV_S"), s("lex:HebGrkEn"), s("bible:개역한글")], &mut |_, _, _| {}).unwrap();
+    let mut labels = std::collections::BTreeSet::new();
+    search::build_index(&home, &mut |l, _, _| {
+        labels.insert(l.to_string());
+    })
+    .unwrap();
+    println!("추가 색인 단계: {:?}", labels);
+    assert!(labels.iter().all(|l| l.contains("KJV1769")));
+    let r = Reader::open(&home).unwrap();
+    let ids: Vec<_> = r.versions().unwrap().iter().map(|v| v.id.clone()).collect();
+    assert_eq!(ids, ["개역한글", "KJV1769", "KJV_S"]);
+    assert_eq!(r.lex("G611").unwrap().len(), 1);
+    let b = search::search(&home, "governor", "bible", &[s("KJV1769")], 10).unwrap();
+    assert!(!b.is_empty());
+    // 삭제 후 검색에서 빠짐
+    source::remove_items(&home, &[s("bible:KJV1769")]).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    assert!(!r.versions().unwrap().iter().any(|v| v.id == "KJV1769"));
+    let b = search::search(&home, "governor", "bible", &[s("KJV1769")], 10).unwrap();
+    assert!(b.is_empty());
+    let st = source::load_state(&home, source::SID).unwrap();
+    assert_eq!(st.items.len(), 3);
+    assert!(!search::status(&home).pending.iter().any(|_| true));
+    // 모두 지우면 통합 DB 파일도 사라짐
+    source::remove_items(&home, &st.items.iter().map(|i| i.id.clone()).collect::<Vec<_>>()).unwrap();
+    assert!(!home.db_path(source::SID, "bible-i").exists() && !home.db_path(source::SID, "orig-i").exists());
+}
+
+#[test]
+fn items_sync_only_changed() {
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path().join("srv");
+    std::fs::create_dir_all(&dir).unwrap();
+    for e in std::fs::read_dir(items_dir("items-free")).unwrap().flatten() {
+        std::fs::copy(e.path(), dir.join(e.file_name())).unwrap();
+    }
+    let cfg = Arc::new(Cfg::default());
+    let url = serve(dir.clone(), cfg.clone());
+    let home = Home::at(t.path().join("home"));
+    let ids = [s("bible:Darby"), s("bible:WEB"), s("bible:YLT")];
+    source::add_items(&home, &url, &ids, &mut |_, _, _| {}).unwrap();
+    cfg.log.lock().unwrap().clear();
+    assert!(source::sync(&home, &mut |_, _, _| {}).unwrap().is_empty());
+    assert!(cfg.log.lock().unwrap().iter().all(|(p, _, _)| p == "theolib.json"));
+    // Darby 항목의 선언을 NHEB 파일 내용으로 바꾼다(sha 변경)
+    let txt = std::fs::read_to_string(dir.join("theolib.json")).unwrap();
+    let mut j: serde_json::Value = serde_json::from_str(&txt).unwrap();
+    let files = j["files"].as_array().unwrap().clone();
+    let nheb = files.iter().find(|f| f["id"] == "bible:NHEB").unwrap().clone();
+    for f in j["files"].as_array_mut().unwrap() {
+        if f["id"] == "bible:Darby" {
+            for k in ["url", "bytes", "sha256", "db_bytes", "db_sha256"] {
+                f[k] = nheb[k].clone();
+            }
+        }
+    }
+    std::fs::write(dir.join("theolib.json"), serde_json::to_vec(&j).unwrap()).unwrap();
+    cfg.log.lock().unwrap().clear();
+    let up = source::sync(&home, &mut |_, _, _| {}).unwrap();
+    println!("갱신된 항목: {:?}, 받은 파일 요청: {:?}", up, cfg.log.lock().unwrap().iter().map(|x| x.0.clone()).collect::<Vec<_>>());
+    assert_eq!(up, vec![s("bible:Darby")]);
+    let gz: Vec<_> = cfg.log.lock().unwrap().iter().filter(|x| x.0.ends_with(".gz")).map(|x| x.0.clone()).collect();
+    assert_eq!(gz.len(), 1);
+}
+
+#[test]
+fn items_full_all_timing() {
+    let dir = items_dir("items-full");
+    if !dir.join("theolib.json").exists() {
+        return;
+    }
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let home = Home::at(t.path().join("home"));
+    let url = serve(dir, Arc::new(Cfg::default()));
+    let d = source::fetch_declaration(&url).unwrap();
+    let ids: Vec<String> = d.files.iter().map(|f| f.id.clone()).collect();
+    let t0 = Instant::now();
+    source::add_items(&home, &url, &ids, &mut |_, _, _| {}).unwrap();
+    let t_dl = t0.elapsed().as_secs_f64();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let t_all = t0.elapsed().as_secs_f64();
+    println!("전체 {}항목 받기 {:.1}초, 색인까지 {:.1}초", ids.len(), t_dl, t_all);
+    let r = Reader::open(&home).unwrap();
+    let vs = r.versions().unwrap();
+    assert_eq!(vs.iter().filter(|v| v.kind == "text").count(), 82);
+    let rows = r.chapter(44, 24, &[s("개역개정")]).unwrap();
+    assert!(rows.iter().find(|x| x.v == 10).unwrap().texts[0].1.starts_with("총독이"));
+    assert!(r.comm_for(44, 24, Some(10)).unwrap().iter().any(|n| n.comm_name == "매튜헨리"));
+    assert_eq!(r.parse(44, 24, 10).unwrap().len(), 24);
+    assert_eq!(r.lex("G611").unwrap().len(), 2);
+    let c = search::search(&home, "뉴산토스", "comm", &[], 20).unwrap();
+    assert!(c.iter().any(|h| h.bk == 44 && h.ch == 24 && h.v == 10));
+    let b = search::search(&home, "총독", "bible", &[s("개역개정")], 100).unwrap();
+    assert_eq!(b.len(), 56);
+    // 주석 1종 삭제 → 검색에서 빠짐
+    source::remove_items(&home, &[s("comm:카리스종합주석")]).unwrap();
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let c = search::search(&home, "뉴산토스", "comm", &[], 20).unwrap();
+    assert!(c.iter().all(|h| h.src != "카리스종합주석"));
+}
+
+/// 자료 파일 샘플 폴더: THEOLIB_SAMPLES 환경변수(없으면 건너뜀). 본문은 기록하지 않는다.
+#[test]
+fn local_files_import() {
+    let Ok(dir) = std::env::var("THEOLIB_SAMPLES") else { return };
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let home = Home::at(t.path().join("home"));
+    let items = theolib_core::localfiles::scan(&[PathBuf::from(&dir)]);
+    println!("인식 {}개: {:?}", items.len(), items.iter().map(|i| (i.id.clone(), i.rows, i.grp.clone())).collect::<Vec<_>>());
+    assert_eq!(items.len(), 5);
+    let ok: Vec<_> = items.iter().filter(|i| i.skip.is_empty()).cloned().collect();
+    assert_eq!(ok.len(), 5);
+    assert!(items.iter().find(|i| i.name == "KJV1769").unwrap().desc.len() > 3);
+    let (done, skipped) = theolib_core::localfiles::import(&home, &ok, false, &mut |_, _, _| {}).unwrap();
+    assert_eq!(done.len(), 5);
+    assert!(skipped.is_empty());
+    let (done2, skipped2) = theolib_core::localfiles::import(&home, &ok[..1], false, &mut |_, _, _| {}).unwrap();
+    assert!(done2.is_empty() && skipped2.len() == 1);
+    search::build_index(&home, &mut |_, _, _| {}).unwrap();
+    let r = Reader::open(&home).unwrap();
+    let rows = r.chapter(44, 24, &[s("KJV1769"), s("KJV_S"), s("WEB")]).unwrap();
+    assert!(rows.iter().find(|x| x.v == 10).unwrap().texts[0].1.to_lowercase().contains("governor"));
+    let web = r.chapter(44, 24, &[s("WEB")]).unwrap().len();
+    let web_total = {
+        let mut n = 0;
+        for bk in 1..=66 {
+            for ch in 1..=150 {
+                n += r.chapter(bk, ch, &[s("WEB")]).unwrap().len();
+            }
+        }
+        n
+    };
+    println!("WEB 총 {web_total}절(24장 {web}절)");
+    assert_eq!(web_total, 31103);
+    let toks = theolib_core::reader::code_tokens(&rows.iter().find(|x| x.v == 10).unwrap().texts[1].1);
+    assert!(toks.iter().any(|x| x.1.as_deref() == Some("G611")));
+    assert!(r.lex("G611").unwrap().iter().any(|e| e.dict == "HebGrkEn"));
+    // 주석: 24:1 에 있고 24:3(행 없음)은 24:2 것을 이어 보임
+    let n1 = r.comm_for(44, 24, Some(1)).unwrap();
+    let n2 = r.comm_for(44, 24, Some(2)).unwrap();
+    let n3 = r.comm_for(44, 24, Some(3)).unwrap();
+    assert!(n1.iter().any(|n| n.comm == "Ellicott"));
+    assert!(!n3.is_empty() && n3[0].body == n2[0].body && n3[0].body != n1[0].body);
+    let b = search::search(&home, "governor", "bible", &[s("WEB")], 5).unwrap();
+    assert!(!b.is_empty());
+    let c = search::search(&home, "Felix", "comm", &[], 5).unwrap();
+    assert!(!c.is_empty());
+    // 찬송가 파일은 건너뜀 안내
+    let hd = t.path().join("x");
+    std::fs::create_dir_all(&hd).unwrap();
+    std::fs::write(hd.join("찬송.hdb"), b"x").unwrap();
+    std::fs::write(hd.join("망가짐.bdb"), b"not sqlite").unwrap();
+    let it = theolib_core::localfiles::scan(&[hd]);
+    println!("건너뜀 안내: {:?}", it.iter().map(|i| i.skip.clone()).collect::<Vec<_>>());
+    assert!(it.iter().any(|i| i.skip.contains("찬송가는 아직 지원하지 않습니다")) && it.iter().all(|i| !i.skip.is_empty()));
 }

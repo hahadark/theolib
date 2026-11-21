@@ -22,11 +22,13 @@ async function loadSources() {
   const list = await invoke('sources');
   const box = $('#srclist');
   box.innerHTML = list.length ? '' : '<p class="muted">설치된 출처가 없습니다.</p>';
+  $('#firstrun').hidden = list.length > 0;
   for (const s of list) {
     const d = document.createElement('div');
     d.className = 'note';
-    const total = s.decl.files.filter((f) => s.installed.includes(f.id)).reduce((a, f) => a + f.db_bytes, 0);
-    d.innerHTML = `<b>${esc(s.origin || '자료 출처')}</b><div class="muted">받은 파일: ${esc(s.installed.map((i) => FILENAMES[i] || i).join(', '))} · 푼 크기 ${fmtB(total)}</div><div class="muted">${esc(s.decl.updated)} ${esc(s.decl.note)}</div>`;
+    const total = s.decl.files.filter((f) => s.installed.includes(f.id)).reduce((a, f) => a + f.db_bytes, 0) + (s.items || []).reduce((a, r) => a + r.db_bytes, 0);
+    const ni = (s.items || []).length;
+    d.innerHTML = `<b>${esc((s.sources || []).map((x) => x.origin || x.title || '자료 출처').join(' + ') || s.origin || '자료 출처')}</b><div class="muted">${ni ? `받은 항목 ${ni}개` : `받은 파일: ${esc(s.installed.map((i) => FILENAMES[i] || i).join(', '))}`} · 푼 크기 ${fmtB(total)}</div><div class="muted">${esc(s.decl.updated)} ${esc(s.decl.note)}</div>`;
     const sync = Object.assign(document.createElement('button'), { textContent: '갱신 확인' });
     const rm = Object.assign(document.createElement('button'), { textContent: '삭제' });
     sync.onclick = async () => run(async () => { $('#progress').hidden = false; const u = await invoke('sync_source'); msg(u.length ? '갱신: ' + u.join(', ') : '바뀐 파일이 없습니다.'); await boot(); });
@@ -38,15 +40,24 @@ async function loadSources() {
 const msg = (t, err) => { const m = $('#srcmsg'); m.textContent = t; m.className = err ? 'err' : 'muted'; };
 async function run(f) { try { await f(); } catch (x) { msg(String(x), true); } finally { $('#progress').hidden = true; } }
 $('#srcshow').onclick = () => { const i = $('#srcurl'); i.type = i.type === 'password' ? 'text' : 'password'; };
-$('#srccheck').onclick = () => run(async () => {
-  const url = $('#srcurl').value.trim();
-  if (!url) return;
+const KIND = { bible: '번역본', code: '원어 번호 본문', lex: '사전', comm: '주석' };
+const KORD = { bible: 0, code: 1, lex: 2, comm: 3 };
+const GORD = { '한국어': 0, '영어': 1, '원어': 2, '외국어': 3 };
+const DEFAULT_NAMES = ['개역개정', '개역한글', '새번역', 'ESV', 'NIV2011', 'KJV1769'];
+const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [] };
+async function previewUrl(url) {
   msg('선언 파일을 확인하는 중…');
-  const d = await invoke('preview_source', { url });
+  let d;
+  try { d = await invoke('preview_source', { url }); } catch (x) {
+    if (url === state.freeUrl && /404/.test(String(x))) { msg('기본 자료가 아직 준비되지 않았습니다.', true); return; }
+    throw x;
+  }
   msg('');
   state.url = url;
+  if (d.layout === 'items') return showItems(d, url);
+  $('#itemsbox').innerHTML = '';
   const p = $('#srcpreview');
-  p.innerHTML = `<div class="note"><b>${esc(d.origin || '자료 출처')}</b><div class="muted">${esc(d.updated)}</div><div class="muted">${esc(d.note)}</div></div>`;
+  p.innerHTML = `<div class="note"><b>${esc(d.title || d.origin || '자료 출처')}</b><div class="muted">${esc(d.updated)}</div><div class="muted">${esc(d.note)}</div></div>`;
   for (const f of d.files) {
     const l = document.createElement('label');
     l.className = 'file';
@@ -65,13 +76,116 @@ $('#srccheck').onclick = () => run(async () => {
     await boot(); loadSources();
   });
   p.append(go);
-});
+}
+$('#srccheck').onclick = () => run(async () => { const url = $('#srcurl').value.trim(); if (url) await previewUrl(url); });
+$('#freebtn').onclick = () => run(async () => { state.freeUrl = await invoke('free_url'); await previewUrl(state.freeUrl); });
+$('#cancel').onclick = () => invoke('cancel_download');
+
+// ---- 파일로 추가(자료 파일 .bdb .sdb .dct .cdb): 같은 항목 목록 화면, 출처 "내 파일"
+async function handlePaths(paths) {
+  if (!paths || !paths.length) return;
+  showView('sources');
+  await run(async () => {
+    msg('파일을 확인하는 중…');
+    const r = await invoke('scan_local', { paths });
+    if (r.declaration) { msg(''); state.url = r.declaration; return previewUrl(r.declaration); }
+    const ok = r.items.filter((i) => !i.skip), bad = r.items.filter((i) => i.skip);
+    if (!r.items.length) return msg('가져올 수 있는 자료 파일(.bdb .sdb .dct .cdb)이 없습니다.', true);
+    const src = await invoke('sources');
+    itemState.installed = src.length ? src[0].items || [] : [];
+    itemState.local = true; itemState.rawLocal = ok;
+    itemState.files = ok.map((i) => ({ ...i, license: i.desc, sha256: '' }));
+    itemState.sel = new Set(itemState.files.map((f) => f.id)); itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
+    $('#srcpreview').innerHTML = `<div class="note"><b>내 파일</b> <span class="muted">${ok.length}개 인식</span>${bad.length ? `<div class="err">건너뜀 ${bad.length}개: ${bad.map((b) => esc(b.name + ' (' + b.skip + ')')).join(', ')}</div>` : ''}</div>`;
+    msg(`${ok.length}개를 인식했습니다.`);
+    drawItems();
+  });
+}
+function drawLocalButtons() {
+  const { files, sel } = itemState;
+  $('#itgo').textContent = '선택한 파일 가져오기';
+  $('#itgo').onclick = () => run(async () => {
+    const chosen = files.filter((f) => sel.has(f.id));
+    if (!chosen.length) return msg('가져올 항목을 고르세요.', true);
+    const dup = chosen.filter((f) => statusOf(f) === '받음');
+    let replace = false;
+    if (dup.length) replace = confirm(`이미 있는 항목 ${dup.length}개(${dup.slice(0, 3).map((d) => d.name).join(', ')}…)를 바꿉니다. [확인]=바꾸기, [취소]=건너뛰기`);
+    $('#progress').hidden = false;
+    const [done, skipped] = await invoke('import_local', { items: chosen.map(({ license, sha256, ...rest }) => rest), replace });
+    msg(`가져왔습니다 ${done.length}개${skipped.length ? `, 건너뜀 ${skipped.length}개` : ''}. 검색 색인은 백그라운드에서 만드는 중입니다.`);
+    itemState.local = false; $('#itemsbox').innerHTML = ''; $('#srcpreview').innerHTML = '';
+    await boot(); await loadSources();
+  });
+  $('#itdel').onclick = () => run(async () => {
+    const ids = files.filter((f) => sel.has(f.id) && statusOf(f) === '받음').map((f) => f.id);
+    if (!ids.length) return msg('삭제할 항목을 고르세요.', true);
+    if (!confirm(`${ids.length}개 항목을 지웁니다. 계속할까요?`)) return;
+    await invoke('remove_items', { ids }); msg('지웠습니다.'); await boot(); await loadSources(); drawItems();
+  });
+}
+$('#pickfiles').onclick = async () => handlePaths(await invoke('pick_paths', { folder: false }));
+$('#pickfolder').onclick = async () => handlePaths(await invoke('pick_paths', { folder: true }));
+listen('tauri://drag-drop', (ev) => handlePaths(ev.payload && ev.payload.paths));
+
+// ---- 항목별 받기: 한 목록, 정렬·거르기·분류별 선택
+async function showItems(d, url) {
+  $('#srcpreview').innerHTML = `<div class="note"><b>${esc(d.title || d.origin || '자료 출처')}</b> <span class="muted">${esc(d.origin)}</span><div class="muted">${esc(d.updated)} ${esc(d.note)}</div></div>`;
+  const src = await invoke('sources');
+  itemState.installed = src.length ? src[0].items || [] : [];
+  itemState.local = false; itemState.url = url; itemState.files = d.files; itemState.q = ''; itemState.sort = 'default'; itemState.dir = 1;
+  itemState.sel = new Set(d.files.filter((f) => (f.kind === 'bible' ? DEFAULT_NAMES.includes(f.name) : true) && statusOf(f) !== '받음').map((f) => f.id));
+  drawItems();
+}
+function statusOf(f) {
+  if (itemState.local) return itemState.installed.some((x) => x.id === f.id) ? '받음' : '안 받음'; const r = itemState.installed.find((x) => x.id === f.id); return !r ? '안 받음' : r.sha256 === f.sha256 ? '받음' : '새 판 있음'; }
+function drawItems() {
+  const { files, sel, sort, dir, q } = itemState;
+  const cmp = {
+    default: (a, b) => (KORD[a.kind] ?? 9) - (KORD[b.kind] ?? 9) || (GORD[a.grp] ?? 9) - (GORD[b.grp] ?? 9) || a.name.localeCompare(b.name, 'ko'),
+    name: (a, b) => a.name.localeCompare(b.name, 'ko'), grp: (a, b) => (KIND[a.kind] + a.grp).localeCompare(KIND[b.kind] + b.grp, 'ko'),
+    bytes: (a, b) => a.bytes - b.bytes, status: (a, b) => statusOf(a).localeCompare(statusOf(b), 'ko'),
+    sel: (a, b) => Number(sel.has(b.id)) - Number(sel.has(a.id)),
+  }[sort];
+  const ql = q.trim().toLowerCase();
+  const rows = files.filter((f) => !ql || (f.name + ' ' + f.grp + ' ' + (KIND[f.kind] || '') + ' ' + (f.license || '')).toLowerCase().includes(ql)).sort((a, b) => dir * cmp(a, b));
+  const groups = [...new Set(files.map((f) => f.kind + '|' + f.grp))];
+  const gbtn = groups.map((g) => { const [k, gr] = g.split('|'); return `<span class="gsel">${esc(KIND[k] || k)}·${esc(gr)} <a href="#" data-g="${esc(g)}" data-on="1">모두 선택</a>/<a href="#" data-g="${esc(g)}" data-on="0">해제</a></span>`; }).join(' ');
+  const chosen = files.filter((f) => sel.has(f.id));
+  const total = chosen.reduce((a, f) => a + f.bytes, 0);
+  $('#itemsbox').innerHTML = `<div class="bar"><input id="itq" placeholder="이름·분류·근거로 거르기" size="30" value="${esc(q)}"> <span class="muted">${rows.length}/${files.length}항목</span></div><div class="muted">${gbtn}</div>
+  <div class="itemscroll"><table class="items"><tr><th data-s="sel">선택</th><th data-s="name">이름</th><th data-s="grp">분류</th><th data-s="bytes">크기</th><th data-s="status">상태</th><th>근거</th></tr>${rows.map((f) => `<tr><td><input type="checkbox" data-id="${esc(f.id)}" ${sel.has(f.id) ? 'checked' : ''}></td><td>${esc(f.name)}</td><td>${esc(KIND[f.kind] || f.kind)}·${itemState.local && f.kind === 'bible' ? `<select data-grp="${esc(f.id)}">${['한국어', '영어', '원어', '외국어'].map((g) => `<option ${g === f.grp ? 'selected' : ''}>${g}</option>`).join('')}</select>` : esc(f.grp)}</td><td>${fmtB(f.bytes)}</td><td>${statusOf(f)}</td><td class="muted">${esc(f.license || '')}</td></tr>`).join('')}</table></div>
+  <div class="bar"><b id="itsum">${chosen.length}개 선택 · 받는 용량 ${fmtB(total)}</b> <button id="itgo">선택한 항목 받기</button> <button id="itdel">선택한 항목 삭제(받은 것만)</button></div>`;
+  const qi = $('#itq'); qi.oninput = () => { itemState.q = qi.value; drawItems(); const n = $('#itq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
+  $('#itemsbox').querySelectorAll('th[data-s]').forEach((th) => (th.onclick = () => { if (itemState.sort === th.dataset.s) itemState.dir *= -1; else { itemState.sort = th.dataset.s; itemState.dir = 1; } drawItems(); }));
+  $('#itemsbox').querySelectorAll('input[data-id]').forEach((c) => (c.onchange = () => { c.checked ? sel.add(c.dataset.id) : sel.delete(c.dataset.id); drawItems(); }));
+  $('#itemsbox').querySelectorAll('a[data-g]').forEach((a) => (a.onclick = (ev) => { ev.preventDefault(); for (const f of files) if (f.kind + '|' + f.grp === a.dataset.g) a.dataset.on === '1' ? sel.add(f.id) : sel.delete(f.id); drawItems(); }));
+  $('#itemsbox').querySelectorAll('select[data-grp]').forEach((s) => (s.onchange = () => { const f = files.find((x) => x.id === s.dataset.grp); if (f) f.grp = s.value; }));
+  if (itemState.local) return drawLocalButtons();
+  $('#itgo').onclick = () => run(async () => {
+    const ids = files.filter((f) => sel.has(f.id) && statusOf(f) !== '받음').map((f) => f.id);
+    if (!ids.length) return msg('받을 항목을 고르세요(이미 받은 항목은 건너뜁니다).', true);
+    state.plan = files.filter((f) => ids.includes(f.id)); state.planDone = {};
+    $('#progress').hidden = false; msg('받는 중… (중간에 끊겨도 다시 누르면 이어받습니다)');
+    await invoke('add_items', { url: itemState.url, ids });
+    msg('받기를 마쳤습니다. 검색 색인은 백그라운드에서 만드는 중입니다(성경 보기는 바로 쓸 수 있습니다).');
+    state.plan = null; await boot(); await loadSources(); await showItems({ files, title: '', origin: '', updated: '', note: '' }, itemState.url);
+  });
+  $('#itdel').onclick = () => run(async () => {
+    const ids = files.filter((f) => sel.has(f.id) && statusOf(f) !== '안 받음').map((f) => f.id);
+    if (!ids.length) return msg('삭제할 받은 항목을 고르세요.', true);
+    if (!confirm(`${ids.length}개 항목을 지웁니다. 계속할까요?`)) return;
+    await invoke('remove_items', { ids });
+    msg('지웠습니다.'); await boot(); await loadSources(); await showItems({ files, title: '', origin: '', updated: '', note: '' }, itemState.url);
+  });
+}
+
 listen('progress', (ev) => {
   const { label, done, total } = ev.payload;
   $('#progress').hidden = false;
   $('#fill').style.width = (total ? Math.min(100, (done * 100) / total) : 0) + '%';
   const idx = /색인/.test(label);
   $('#ptext').textContent = ` ${label} ${idx ? done.toLocaleString() + ' / ' + total.toLocaleString() + '건' : fmtB(done) + ' / ' + fmtB(total)}`;
+  if (state.plan) { state.planDone[label.split(' ')[0]] = Math.max(state.planDone[label.split(' ')[0]] || 0, label.includes('받는 중') ? done : 0); const tot = state.plan.reduce((a, f) => a + f.bytes, 0), got = state.plan.reduce((a, f) => a + Math.min(f.bytes, state.planDone[f.id] || 0), 0); $('#pitems').textContent = `전체 남은 용량 ${fmtB(Math.max(0, tot - got))} (항목 ${state.plan.length}개)`; }
   if (idx) { state.indexing = true; idxNote(label + ' ' + (total ? Math.floor((done * 100) / total) : 0) + '%'); }
 });
 listen('index-done', (ev) => { state.indexing = false; $('#progress').hidden = true; idxNote(); if (ev.payload) msg('색인 오류: ' + ev.payload, true); else if ($('#srcmsg').textContent.includes('색인')) msg('검색 색인까지 모두 마쳤습니다.'); });
@@ -88,7 +202,7 @@ async function idxNote(t) {
 async function boot() {
   const list = await invoke('sources');
   const inst = list.length ? list[0].installed : [];
-  const has = inst.some((i) => i.startsWith('bible-')) || inst.includes('orig');
+  const has = inst.some((i) => i.startsWith('bible') || i.startsWith('orig'));
   if (!has) { state.versions = []; $('#vers').innerHTML = ''; $('#text').innerHTML = '<p class="muted">성경 자료가 없습니다. 「자료 출처」에서 주소를 넣고 받으세요.</p>'; showView('sources'); return; }
   state.books = await invoke('books');
   state.versions = (await invoke('versions')).filter((v) => v.kind !== 'parse');
