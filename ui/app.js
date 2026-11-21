@@ -86,6 +86,17 @@ async function loadSources() {
 }
 const msg = (t, err) => { const m = $('#srcmsg'); m.textContent = t; m.className = err ? 'err' : 'muted'; };
 async function run(f) { try { await f(); } catch (x) { msg(String(x), true); } finally { $('#progress').hidden = true; } }
+// 주소 칸은 잠가 두고 [편집]을 눌렀을 때만 고칠 수 있게 한다(브라우저 비밀번호 자동 채움 사고 방지).
+function lockUrlInput(on) {
+  const i = $('#srcurl');
+  i.readOnly = on;
+  $('#srcedit').textContent = on ? '편집' : '잠금';
+  if (!on) { i.focus(); }
+}
+$('#srcedit').onclick = () => lockUrlInput(!$('#srcurl').readOnly);
+$('#updedit').onclick = () => { const i = $('#updtoken'); i.readOnly = !i.readOnly; $('#updedit').textContent = i.readOnly ? '편집' : '잠금'; if (!i.readOnly) i.focus(); };
+$('#updtoken').addEventListener('blur', () => { $('#updtoken').readOnly = true; $('#updedit').textContent = '편집'; });
+lockUrlInput(true);
 $('#srcshow').onclick = () => { const i = $('#srcurl'); i.type = i.type === 'password' ? 'text' : 'password'; };
 const KIND = { bible: '번역본', code: '원어 번호 본문', lex: '사전', comm: '주석' };
 
