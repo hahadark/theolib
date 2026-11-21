@@ -14,9 +14,26 @@ const state = {
   parseRow: [],            // 연동 원전 분해 캐시
   rows: [],                // 연동 본문 캐시
   url: null,
+  view: 'bible',           // 열려 있는 화면 탭
   // 패널별 캐시
   panelData: {},
 };
+
+// ---- 마지막 화면 상태(책·장·절·번역본·열린 탭) 저장·복원(localStorage theolib.ui.v1)
+function saveView() {
+  UIStore.write({ lastView: { bk: state.bk, ch: state.ch, curVerse: state.curVerse, vers: [...state.vers], view: state.view } });
+}
+function restoreView() {
+  const lv = UIStore.read().lastView;
+  if (!lv) return;
+  const b = state.books.find((x) => x.n === lv.bk) || state.books[0];
+  if (b) state.bk = b.n;
+  const ch = Math.min(lv.ch || 1, (state.books.find((x) => x.n === state.bk) || {}).ch || 1);
+  state.ch = Math.max(1, ch);
+  if (Array.isArray(lv.vers)) state.vers = lv.vers.filter((id) => state.versions.some((v) => v.id === id));
+  if (lv.curVerse != null) state.curVerse = lv.curVerse;
+  if (lv.view && ['bible', 'search', 'articles', 'sources'].includes(lv.view)) state.view = lv.view;
+}
 const fmtB = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.ceil(n / 1024) + ' KB');
 const bookName = (n) => (state.books.find((b) => b.n === n) || {}).name || n;
 
@@ -25,9 +42,11 @@ document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => show
 function showView(v) {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
   document.querySelectorAll('main > section').forEach((s) => (s.hidden = s.id !== 'view-' + v));
+  state.view = v;
   if (v === 'sources') loadSources();
   if (v === 'articles') loadArticles();
   if (v === 'search') idxNote();
+  saveView();
 }
 
 // ============================================================ 자료 출처 (다른 작업자가 고침 — 그대로 둠)
@@ -255,6 +274,7 @@ async function boot() {
   if (!has) { state.versions = []; $('#vers').innerHTML = ''; $('#panes').innerHTML = '<p class="muted" style="padding:12px 16px">성경 자료가 없습니다. 「자료 출처」에서 주소를 넣고 받으세요.</p>'; showView('sources'); return; }
   state.books = await invoke('books');
   state.versions = (await invoke('versions')).filter((v) => v.kind !== 'parse' && !isHidden('v:' + v.id));
+  restoreView();
   state.vers = state.vers.filter((id) => state.versions.some((v) => v.id === id));
   if (!state.vers.length) { const t = state.versions.filter((v) => v.kind === 'text'); const k = t.find((v) => v.id === '개역개정') || t[0] || state.versions[0]; state.vers = k ? [k.id] : []; }
   $('#book').innerHTML = state.books.map((b) => `<option value="${b.n}">${esc(b.name)}</option>`).join('');
@@ -262,9 +282,11 @@ async function boot() {
   for (const v of state.versions) { const gg = (v.kind === 'code' ? '원어 번호 본문' : v.file + ' · ' + (v.grp || '')); if (gg !== g) { g = gg; hv += `<div class="g">${esc(g)}</div>`; } hv += `<label title="${esc(v.desc)}"><input type="checkbox" value="${esc(v.id)}" ${state.vers.includes(v.id) ? 'checked' : ''}>${esc(v.name)}</label>`; }
   $('#vers').innerHTML = hv;
   $('#vers-sum').textContent = `번역본 (${state.versions.length}종 중 ${state.vers.length}개)`;
-  $('#vers').onchange = () => { state.vers = [...document.querySelectorAll('#vers input:checked')].map((i) => i.value); $('#vers-sum').textContent = `번역본 (${state.versions.length}종 중 ${state.vers.length}개)`; syncBodyPanels(); };
+  $('#vers').onchange = () => { state.vers = [...document.querySelectorAll('#vers input:checked')].map((i) => i.value); $('#vers-sum').textContent = `번역본 (${state.versions.length}종 중 ${state.vers.length}개)`; syncBodyPanels(); saveView(); };
   fillChap();
-  await openChapter(false);
+  const backV = state.curVerse;
+  await openChapter(backV);
+  if (state.view && state.view !== 'bible') showView(state.view);
 }
 
 function fillChap() {
@@ -609,6 +631,7 @@ async function openChapter(focusV) {
   state.sel.clear(); state.last = null;
   state.panelData = {};
   renderAll();
+  saveView();
 }
 
 // ---- 패널 본문에서 절 클릭 시 연동 갱신
@@ -640,6 +663,7 @@ function selectVerse(v, extend) {
   state.curVerse = v;
   // 연동 패널만 다시 그린다(선택 강조·주석·원전 연동)
   for (const p of Layout.panels()) if (p.linked) renderPanel(p);
+  saveView();
 }
 
 // ---- 패널 body 클릭 위임(렌더 때마다 교체되므로 위임은 #panes 에 두고 이벤트로 분기)

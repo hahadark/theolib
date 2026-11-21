@@ -92,8 +92,10 @@
     }
     name() { return PANEL_META[this.kind].name; }
     saveSettings() {
-      const node = nodeOf(rootFromDOM(), this.id);
+      const root = rootFromDOM();
+      const node = nodeOf(root, this.id);
       if (node) node.settings = JSON.parse(JSON.stringify(this.settings));
+      setLast(root); // 즉시 localStorage 에 반영(주석 시리즈·번역본·서식 등 바뀌는 대로 저장)
     }
   }
 
