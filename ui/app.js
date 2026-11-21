@@ -62,11 +62,14 @@ function hiddenList() {
   const arr = (window.UIStore && window.UIStore.read().hiddenItems) || [];
   return Array.isArray(arr) ? arr : [];
 }
+// 화면의 숨김 목록을 코어에 전달(검색 결과에서도 빠지게)
+function syncHidden() { return invoke('set_hidden', { hidden: hiddenList() }).catch(() => {}); }
 function isHidden(key) { return hiddenList().includes(key); }
 function setHidden(key, on) {
   const set = new Set(hiddenList());
   if (on) set.add(key); else set.delete(key);
   window.UIStore.write({ hiddenItems: [...set] });
+  syncHidden();
 }
 // 항목(ItemRec) → 숨김 키. name 이 번역본 id·사전 id·시리즈 id 역할을 한다.
 function itemHiddenKey(f) {
@@ -253,6 +256,7 @@ async function boot() {
   const inst = list.length ? list[0].installed : [];
   const has = inst.some((i) => i.startsWith('bible') || i.startsWith('orig'));
   if (!has) { state.versions = []; $('#vers').innerHTML = ''; $('#panes').innerHTML = '<p class="muted" style="padding:12px 16px">성경 자료가 없습니다. 「자료 출처」에서 주소를 넣고 받으세요.</p>'; showView('sources'); return; }
+  await syncHidden();
   state.books = await invoke('books');
   state.versions = (await invoke('versions')).filter((v) => v.kind !== 'parse' && !isHidden('v:' + v.id));
   state.vers = state.vers.filter((id) => state.versions.some((v) => v.id === id));

@@ -27,6 +27,12 @@ enum Cmd {
     Lex { code: String },
     Search { q: String, #[arg(long = "in", default_value = "bible")] area: String, #[arg(long, default_value = "개역개정")] ver: String, #[arg(long, default_value_t = 20)] limit: usize },
     Stats,
+    /// 항목별 선언에서 고른 항목만 받는다: items <주소> <항목id>...
+    Items { url: String, ids: Vec<String> },
+    /// 숨김 목록 바꾸기(v:개역개정 s:카리스종합주석 ...). 키 없이 부르면 해제
+    Hide { keys: Vec<String> },
+    /// 파일/폴더로 자료 추가
+    Local { paths: Vec<String> },
 }
 
 #[derive(Subcommand)]
@@ -78,6 +84,29 @@ fn main() -> Result<()> {
             let mut p = progress();
             let u = source::sync(&home, &mut p)?;
             println!("갱신한 파일: {}", if u.is_empty() { "없음".into() } else { u.join(", ") });
+            search::build_index(&home, &mut p)?;
+        }
+        Cmd::Items { url, ids } => {
+            let mut p = progress();
+            let t = std::time::Instant::now();
+            source::add_items(&home, &url, &ids, &mut p)?;
+            println!("받기 {:.2}초", t.elapsed().as_secs_f64());
+            let t = std::time::Instant::now();
+            let st = search::status(&home);
+            println!("색인 대기 단위: {:?}", st.pending);
+            search::build_index(&home, &mut p)?;
+            println!("기기 색인 {:.2}초", t.elapsed().as_secs_f64());
+        }
+        Cmd::Hide { keys } => {
+            source::set_hidden(&home, keys)?;
+            println!("숨김 설정");
+        }
+        Cmd::Local { paths } => {
+            let mut p = progress();
+            let ps: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+            let items = theolib_core::localfiles::scan(&ps);
+            let (ok, bad) = theolib_core::localfiles::import(&home, &items, true, &mut p)?;
+            println!("추가 {:?} 실패 {:?}", ok, bad);
             search::build_index(&home, &mut p)?;
         }
         Cmd::Index => {

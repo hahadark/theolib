@@ -332,6 +332,12 @@ fn lex(code: String) -> R<Vec<LexOut>> {
     Ok(r.lex(&code).map_err(e)?.into_iter().map(|x| LexOut { html: html::sanitize(&x.html), dict: x.dict, code: x.code, head: x.head }).collect())
 }
 
+/// 화면의 숨김 목록(v:/d:/s: 키)을 코어에 전달한다. 검색·목록에서 빠진다.
+#[tauri::command]
+fn set_hidden(hidden: Vec<String>) -> R<()> {
+    source::set_hidden(&home()?, hidden).map_err(e)
+}
+
 #[tauri::command]
 fn search_text(q: String, area: String, vers: Vec<String>) -> R<Vec<search::Hit>> {
     search::search(&home()?, &q, &area, &vers, 100).map_err(e)
@@ -377,12 +383,12 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body, selftest_report
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, set_hidden, goto_ref, articles, article_body, selftest_report
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, goto_ref, articles, article_body
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, parse, lex, search_text, set_hidden, goto_ref, articles, article_body
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");

@@ -268,7 +268,7 @@ fn import_many(home: &Home, items: &[LocalItem], replace: bool, key: String, ski
         }
         c.execute_batch("COMMIT")?;
         st.items.retain(|x| x.id != it.id);
-        st.items.push(ItemRec { id: it.id.clone(), kind: it.kind.clone(), name: it.name.clone(), grp: it.grp.clone(), sha256: file_sha(&src_path)?, bytes: it.bytes, db_bytes: it.bytes, license: String::new(), source: key.clone() });
+        st.items.push(ItemRec { id: it.id.clone(), kind: it.kind.clone(), name: it.name.clone(), grp: it.grp.clone(), sha256: file_sha(&src_path)?, bytes: it.bytes, db_bytes: it.bytes, license: String::new(), source: key.clone(), fts: false });
         push_unique(&mut st.installed, pack);
         if !st.sources.iter().any(|s| s.key == key) {
             st.sources.push(SrcInfo { kind: skind.clone(), key: key.clone(), origin: if key == LOCAL_KEY { "내 파일".into() } else { "압축 파일".into() }, title: String::new(), files: vec![] });

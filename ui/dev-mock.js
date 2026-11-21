@@ -177,6 +177,7 @@
       }
       case 'parse': r = PARSE; break;
       case 'lex': r = LEX[args.code] || []; break;
+      case 'set_hidden': r = null; break;
       case 'search_text': r = [{ area: 'bible', src: '개역개정', bk: 44, ch: 24, v: 10, ref_: '행 24:10', note_id: 0, snippet: '시험 [본문] 검색 결과' }]; break;
       case 'goto_ref': r = args.input && /\d/.test(args.input) ? [44, 24, 10] : null; break;
       case 'articles': r = ARTICLES; break;

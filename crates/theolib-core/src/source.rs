@@ -52,6 +52,14 @@ pub struct FileDecl {
     pub notes: Option<i64>,
     #[serde(default)]
     pub articles: Option<i64>,
+    /// 항목 파일에 검색 색인(FTS5)이 미리 들어 있는지, 색인 버전
+    #[serde(default)]
+    pub fts: bool,
+    #[serde(default)]
+    pub fts_ver: i64,
+    /// 기본 체크 힌트(크기 기준)
+    #[serde(default)]
+    pub default: Option<bool>,
 }
 
 /// 로컬 통합 DB에 넣은 항목 한 개의 기록.
@@ -67,6 +75,35 @@ pub struct ItemRec {
     #[serde(default)]
     pub license: String,
     pub source: String,
+    /// 받은 미리 만든 색인을 쓰고 있다(기기에서 색인하지 않음)
+    #[serde(default)]
+    pub fts: bool,
+}
+
+/// 앱이 이해하는 미리 만든 색인 버전
+pub const FTS_VER: i64 = 1;
+
+/// 항목의 미리 만든 색인 파일 위치
+pub fn fts_path(home: &Home, id: &str) -> std::path::PathBuf {
+    let h = hex(&Sha256::digest(id.as_bytes()));
+    home.source_dir(SID).join("fts").join(format!("{}.db", &h[..16]))
+}
+
+/// 받은 항목 DB 에서 본문 표를 빼고 색인만 남겨 보관한다.
+fn keep_fts(home: &Home, id: &str, item_db: &Path) -> Result<()> {
+    let to = fts_path(home, id);
+    fs::create_dir_all(to.parent().unwrap())?;
+    let tmp = to.with_extension("tmp");
+    let _ = fs::remove_file(&tmp);
+    fs::copy(item_db, &tmp)?;
+    {
+        let c = Connection::open(&tmp)?;
+        for t in ["version", "verse", "code_version", "code_verse", "lex", "series", "note", "article", "comm_verse"] {
+            c.execute_batch(&format!("DROP TABLE IF EXISTS \"{t}\""))?;
+        }
+        c.execute_batch("VACUUM")?;
+    }
+    replace(&tmp, &to)
 }
 
 /// 항목 종류 → 통합 DB 묶음 id (bible-i / orig-i / comm-i)
@@ -816,7 +853,9 @@ CREATE TABLE IF NOT EXISTS note(id INTEGER PRIMARY KEY, series TEXT, bk INTEGER,
 CREATE TABLE IF NOT EXISTS article(id INTEGER PRIMARY KEY, series TEXT, section TEXT, ord INTEGER, title TEXT, kind TEXT, text TEXT, book_id TEXT, p1 INTEGER, p2 INTEGER);
 CREATE TABLE IF NOT EXISTS comm_verse(comm TEXT, book INTEGER, chapter INTEGER, verse INTEGER, html TEXT);
 CREATE INDEX IF NOT EXISTS note_loc ON note(series, bk, start_key);
-CREATE INDEX IF NOT EXISTS comm_loc ON comm_verse(comm, book, chapter, verse);";
+CREATE INDEX IF NOT EXISTS comm_loc ON comm_verse(comm, book, chapter, verse);
+CREATE INDEX IF NOT EXISTS note_seq ON note(series, bk, seq);
+CREATE INDEX IF NOT EXISTS article_ord ON article(series, ord);";
 
 pub(crate) fn ensure_pack_db(home: &Home, pack: &str) -> Result<()> {
     let p = home.db_path(SID, pack);
@@ -913,10 +952,19 @@ fn install_item(home: &Home, ctx: &Ctx, f: &FileDecl, key: &str, st: &mut State,
     let pack = item_pack(&f.kind).ok_or_else(|| anyhow::anyhow!("{}: 알 수 없는 항목 종류 {}", f.id, f.kind))?;
     let db = fetch_db(home, ctx, f, prog)?;
     let r = merge_item(home, f, &db);
-    let _ = fs::remove_file(&db);
+    if r.is_err() {
+        let _ = fs::remove_file(&db);
+    }
     r?;
+    let use_fts = f.fts && f.fts_ver == FTS_VER;
+    if use_fts {
+        keep_fts(home, &f.id, &db)?;
+    } else {
+        let _ = fs::remove_file(fts_path(home, &f.id));
+    }
+    let _ = fs::remove_file(&db);
     st.items.retain(|x| x.id != f.id);
-    st.items.push(ItemRec { id: f.id.clone(), kind: f.kind.clone(), name: if f.name.is_empty() { item_key(&f.id).to_string() } else { f.name.clone() }, grp: f.grp.clone(), sha256: f.sha256.clone(), bytes: f.bytes, db_bytes: f.db_bytes, license: f.license.clone(), source: key.to_string() });
+    st.items.push(ItemRec { id: f.id.clone(), kind: f.kind.clone(), name: if f.name.is_empty() { item_key(&f.id).to_string() } else { f.name.clone() }, grp: f.grp.clone(), sha256: f.sha256.clone(), bytes: f.bytes, db_bytes: f.db_bytes, license: f.license.clone(), source: key.to_string(), fts: use_fts });
     push_unique(&mut st.installed, pack);
     Ok(())
 }
@@ -968,6 +1016,7 @@ pub fn remove_items(home: &Home, ids: &[String]) -> Result<()> {
             let c = Connection::open(home.db_path(SID, pack))?;
             delete_rows(&c, &r.kind, item_key(id))?;
         }
+        let _ = fs::remove_file(fts_path(home, id));
         st.items.retain(|x| &x.id != id);
         for s in &mut st.sources {
             s.files.retain(|f| f != id);

@@ -31,7 +31,7 @@ fn desired(home: &Home) -> Vec<Unit> {
     for f in st.installed.iter().filter(|i| matches!(kind_of(i), "bible" | "comm") && home.db_path(SID, i).exists()) {
         if f == "bible-i" || f == "comm-i" {
             let want = if f == "bible-i" { "bible" } else { "comm" };
-            for r in st.items.iter().filter(|r| r.kind == want) {
+            for r in st.items.iter().filter(|r| r.kind == want && !has_fts(home, r)) {
                 v.push(Unit { file: f.clone(), unit: r.id.clone(), sha: r.sha256.clone(), key: source::item_key(&r.id).to_string() });
             }
         } else {
@@ -40,6 +40,39 @@ fn desired(home: &Home) -> Vec<Unit> {
         }
     }
     v
+}
+
+/// 미리 만든 색인을 받은 항목이면 기기에서 색인하지 않는다.
+fn has_fts(home: &Home, r: &source::ItemRec) -> bool {
+    r.fts && source::fts_path(home, &r.id).exists()
+}
+
+/// 미리 만든 색인(trigram, detail=none)용 질의: 3글자 조각을 모두 포함(AND). 구절 질의는 이 색인에서 쓸 수 없어 결과를 본문으로 다시 확인한다.
+fn tri_q(q: &str) -> Option<String> {
+    let cs: Vec<char> = q.chars().collect();
+    if cs.len() < 3 {
+        return None;
+    }
+    let mut terms: Vec<String> = vec![];
+    for w in cs.windows(3) {
+        let t: String = w.iter().collect::<String>().replace('"', "\"\"");
+        let t = format!("\"{t}\"");
+        if !terms.contains(&t) {
+            terms.push(t);
+        }
+    }
+    Some(terms.join(" AND "))
+}
+
+fn contains_ci(text: &str, q: &str) -> bool {
+    strip_tags(text).to_lowercase().contains(&q.to_lowercase())
+}
+
+fn fts_ids(home: &Home, id: &str, tab: &str, q: &str, n: usize) -> Vec<i64> {
+    let Some(m) = tri_q(q) else { return vec![] };
+    let Ok(c) = Connection::open_with_flags(source::fts_path(home, id), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY) else { return vec![] };
+    let Ok(mut s) = c.prepare(&format!("SELECT rowid FROM \"{tab}\" WHERE \"{tab}\" MATCH ?1 ORDER BY rowid LIMIT ?2")) else { return vec![] };
+    s.query_map((m, n as i64), |r| r.get(0)).map(|it| it.filter_map(|x| x.ok()).collect()).unwrap_or_default()
 }
 
 fn short_hash(s: &str) -> String {
@@ -232,9 +265,13 @@ pub fn search(home: &Home, q: &str, area: &str, vers: &[String], limit: usize) -
     if area == "comm" {
         let hidden = source::load_state(home, SID).map(|s| s.hidden).unwrap_or_default();
         let comms: Vec<String> = wanted_files(home).into_iter().filter(|f| kind_of(f) == "comm").collect();
-        if comms.is_empty() {
+        let stt = source::load_state(home, SID).ok();
+        let fts_comm: Vec<source::ItemRec> = stt.as_ref().map(|s| s.items.iter().filter(|r| r.kind == "comm" && has_fts(home, r) && !hidden.contains(&format!("s:{}", source::item_key(&r.id)))).cloned().collect()).unwrap_or_default();
+        if comms.is_empty() && fts_comm.is_empty() {
             bail!("주석 자료를 받지 않았습니다.");
         }
+        // 짧은 검색어(2글자 이하)는 색인 없이 본문을 훑는다: 주석이 든 통합 DB 전체
+        let scan: Vec<String> = if short { stt.as_ref().map(|s| s.installed.iter().filter(|i| kind_of(i) == "comm" && home.db_path(SID, i).exists()).cloned().collect()).unwrap_or_default() } else { comms.clone() };
         if st.pending.iter().any(|p| comms.contains(p)) || idx.is_none() {
             bail!("주석 검색 색인을 아직 만들지 못했습니다. 자료 출처 화면의 색인 진행률을 확인하세요.");
         }
@@ -246,7 +283,7 @@ pub fn search(home: &Home, q: &str, area: &str, vers: &[String], limit: usize) -
                 tabs.push(x?);
             }
         }
-        for file in &comms {
+        for file in &scan {
             let src = open_ro(&home.db_path(SID, file))?;
             let mk = |r: &rusqlite::Row| -> rusqlite::Result<Hit> {
                 let key: i64 = r.get(2)?;
@@ -254,10 +291,10 @@ pub fn search(home: &Home, q: &str, area: &str, vers: &[String], limit: usize) -
             };
             if short {
                 let mut s = src.prepare("SELECT series,bk,start_key,ref,id,coalesce(title,'')||char(10)||coalesce(text,'') FROM note WHERE title LIKE '%'||?1||'%' OR text LIKE '%'||?1||'%' LIMIT ?2")?;
-                let mut rows = s.query((q, limit as i64))?;
+                let mut rows = s.query((q, (limit * 30) as i64))?;
                 while let Some(r) = rows.next()? {
                     let h = mk(r)?;
-                    if !hidden.contains(&format!("s:{}", h.src)) {
+                    if !hidden.contains(&format!("s:{}", h.src)) && out.len() < limit {
                         out.push(h);
                     }
                 }
@@ -295,6 +332,54 @@ pub fn search(home: &Home, q: &str, area: &str, vers: &[String], limit: usize) -
                 }
             }
         }
+        // 미리 만든 색인을 받은 주석: 항목마다 색인 파일을 조회
+        if !short && !fts_comm.is_empty() {
+            let src = open_ro(&home.db_path(SID, "comm-i"))?;
+            let mut ns = src.prepare("SELECT series,bk,start_key,ref,id,coalesce(title,'')||char(10)||coalesce(text,'') FROM note WHERE series=?1 AND bk=?2 AND seq=?3")?;
+            let mut as_ = src.prepare("SELECT series,coalesce(title,''),id,coalesce(title,'')||char(10)||coalesce(text,'') FROM article WHERE series=?1 AND ord=?2")?;
+            let mut cvs = src.prepare("SELECT comm,book,chapter,verse,coalesce(html,'') FROM comm_verse WHERE comm=?1 AND book=?2 AND chapter=?3 AND verse=?4")?;
+            for it in &fts_comm {
+                let key = source::item_key(&it.id).to_string();
+                let mut n = 0;
+                for id in fts_ids(home, &it.id, "f_n", q, limit * 6) {
+                    if n >= limit {
+                        break;
+                    }
+                    let (bk, seq) = (id / 1_000_000, id % 1_000_000);
+                    if let Ok(Some(h)) = ns.query_row((&key, bk, seq), |r| {
+                        let k: i64 = r.get(2)?;
+                        let body: String = r.get(5)?;
+                        Ok(contains_ci(&body, q).then(|| Hit { area: "comm".into(), src: r.get(0).unwrap_or_default(), bk: r.get(1).unwrap_or(0), ch: k / 1000, v: k % 1000, ref_: r.get::<_, Option<String>>(3).ok().flatten().unwrap_or_default(), note_id: r.get(4).unwrap_or(0), snippet: snippet(&body, q) }))
+                    }) {
+                        out.push(h);
+                        n += 1;
+                    }
+                }
+                for id in fts_ids(home, &it.id, "f_a", q, 100) {
+                    if let Ok(Some(h)) = as_.query_row((&key, id), |r| {
+                        let body: String = r.get(3)?;
+                        Ok(contains_ci(&body, q).then(|| Hit { area: "article".into(), src: r.get(0).unwrap_or_default(), bk: 0, ch: 0, v: 0, ref_: r.get(1).unwrap_or_default(), note_id: r.get(2).unwrap_or(0), snippet: snippet(&body, q) }))
+                    }) {
+                        out.push(h);
+                    }
+                }
+                for id in fts_ids(home, &it.id, "f_v", q, limit * 6) {
+                    if n >= limit {
+                        break;
+                    }
+                    let (b, c, v) = (id / 100_000_000, (id / 10_000) % 10_000, id % 10_000);
+                    let mut rows = cvs.query((&key, b, c, v))?;
+                    while let Some(r) = rows.next()? {
+                        let html: String = r.get(4)?;
+                        if contains_ci(&html, q) {
+                            out.push(Hit { area: "comm".into(), src: r.get(0)?, bk: b, ch: c, v, ref_: format!("{c}:{v}"), note_id: 0, snippet: snippet(&html, q) });
+                            n += 1;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         return Ok(out);
     }
     // 성경 본문
@@ -308,6 +393,32 @@ pub fn search(home: &Home, q: &str, area: &str, vers: &[String], limit: usize) -
     for ver in picked {
         let Some(vi) = all.iter().find(|x| x.id == ver) else { continue };
         if !files.contains(&vi.file) {
+            continue;
+        }
+        let pre = source::load_state(home, SID).ok().and_then(|st| st.items.into_iter().find(|r| r.id == format!("bible:{ver}") && has_fts(home, r)));
+        if let (Some(it), false) = (&pre, short) {
+            let src = open_ro(&home.db_path(SID, &vi.file))?;
+            let mut s = src.prepare("SELECT text FROM verse WHERE version=?1 AND book=?2 AND chapter=?3 AND verse=?4")?;
+            let mut n = 0;
+            for id in fts_ids(home, &it.id, "f_t", q, limit * 6) {
+                if n >= limit {
+                    break;
+                }
+                let (b, c, v) = (id / 100_000_000, (id / 10_000) % 10_000, id % 10_000);
+                let mut rows = s.query((&ver, b, c, v))?;
+                while let Some(r) = rows.next()? {
+                    let t: String = r.get::<_, Option<String>>(0)?.unwrap_or_default();
+                    if contains_ci(&t, q) {
+                        out.push(Hit { area: "bible".into(), src: ver.clone(), bk: b, ch: c, v, ref_: String::new(), note_id: 0, snippet: snippet(&t, q) });
+                        n += 1;
+                        break;
+                    }
+                }
+            }
+            if out.len() >= limit {
+                out.truncate(limit);
+                break;
+            }
             continue;
         }
         let have_idx = idx.as_ref().map(|c| c.query_row("SELECT count(*) FROM idx WHERE file=? AND ver=?", (&vi.file, &ver), |r| r.get::<_, i64>(0)).unwrap_or(0) > 0).unwrap_or(false);
