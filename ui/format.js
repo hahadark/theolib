@@ -24,6 +24,35 @@
     };
   })();
 
+  // 앱에 내장한 글꼴(ui/fonts.css). 설치 여부와 상관없이 늘 목록에 나온다.
+  const APP_FONTS = ['나눔고딕', '나눔명조', '나눔바른고딕', '나눔스퀘어', '서울한강체', '서울남산체'];
+
+  // 같은 글꼴이 컴퓨터에 영어 이름 등으로 설치돼 있으면 '이 컴퓨터 글꼴'에 또 내보이지 않는다.
+  const APP_FONT_ALIASES = {
+    '나눔고딕': ['nanumgothic', 'nanumgothicotf', 'nanumgothiclight', 'nanumgothicbold'],
+    '나눔명조': ['nanummyeongjo'],
+    '나눔바른고딕': ['nanumbarungothic', 'nanumbarungothicotf'],
+    '나눔스퀘어': ['nanumsquare'],
+    '서울한강체': ['seoulhangang', 'seoulhangangb', 'seoulhangangm'],
+    '서울남산체': ['seoulnamsan', 'seoulnamsanb', 'seoulnamsanm'],
+  };
+
+  function normFontName(s) {
+    return String(s || '').toLowerCase().replace(/[\s_.-]/g, '');
+  }
+
+  // 이 이름이 앱 내장 글꼴과 같은 글꼴인가(중복 표시 방지)
+  function appFontOf(name) {
+    const n = normFontName(name);
+    if (!n) return null;
+    for (const f of APP_FONTS) {
+      if (normFontName(f) === n) return f;
+      const al = APP_FONT_ALIASES[f] || [];
+      if (al.some((a) => normFontName(a) === n)) return f;
+    }
+    return null;
+  }
+
   const FONT_CANDIDATES = [
     // 맥·윈도우 공통 시스템 글꼴
     '-apple-system', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Droid Sans Fallback',
@@ -58,17 +87,21 @@
     return diff;
   }
 
-  // 실제 설치된 글꼴만(중복 제거, 순서 유지), 맨 앞에 '시스템 기본'
+  // 실제 설치된 글꼴만(중복 제거, 순서 유지). 앱 내장 글꼴과 같은 것은 빼고 돌려준다.
   function availableFonts() {
     const seen = new Set();
     const out = [];
     for (const name of FONT_CANDIDATES) {
       if (seen.has(name)) continue;
       seen.add(name);
+      if (appFontOf(name)) continue; // 앱 글꼴로 한 번만 보여 준다
       if (fontInstalled(name)) out.push(name);
     }
     return out;
   }
+
+  // 앱 내장 글꼴 목록(항상 보임)
+  function appFonts() { return APP_FONTS.slice(); }
 
   const TARGETS = [
     { id: 'body', name: '본문' },
@@ -161,7 +194,7 @@
       // --acc(강조색)는 테마 클래스(:root / html.dark / html.sepia)가 정한다.
       // 여기서 고정값을 덮으면 어두운/세피아 테마에서 강조 글자 대비가 깨진다.
       '--hl': t.searchHl,
-      '--ui-font': fontStack(ui.font),
+      '--ui-font': fontStack(ui.font, 'ui'),
       '--ui-size': ui.size + 'px',
       '--ui-line': ui.line,
       '--ui-letter': ui.letter,
@@ -169,7 +202,7 @@
     const TARGET_CLASS = { body: '.fmt-body', note: '.fmt-note', orig: '.fmt-orig' };
     for (const [tgt, cls] of Object.entries(TARGET_CLASS)) {
       const c = t.target[tgt];
-      cv['--' + tgt + '-font'] = fontStack(c.font);
+      cv['--' + tgt + '-font'] = fontStack(c.font, tgt);
       cv['--' + tgt + '-size'] = c.size + 'px';
       cv['--' + tgt + '-line'] = c.line;
       cv['--' + tgt + '-letter'] = c.letter;
@@ -178,17 +211,43 @@
       cv['--' + tgt + '-align'] = c.align;
     }
     for (const [k, v] of Object.entries(cv)) r.setProperty(k, v);
+    // 저장된 서식이 내장 글꼴이면 곧바로 불러 둔다(기본값은 건드리지 않는다).
+    for (const n of [ui.font, t.target.body.font, t.target.note.font, t.target.orig.font]) preloadFont(n);
     applyTheme();
     // 절마다 줄바꿈
     const panes = document.querySelector('#panes');
     if (panes) panes.classList.toggle('fmt-no-lb', !t.lineBreak);
   }
 
-  function fontStack(f) {
+  // 내장 글꼴에는 한글만 들어 있어 그리스어·히브리어 글자가 없다.
+  // 그래서 고른 글꼴 뒤에 시스템 대체 글꼴을 이어 붙인다(원어는 특히 그대로 남긴다).
+  const FONT_FALLBACKS = {
+    body: '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Times New Roman", "SBL Greek", "SBL Hebrew", serif',
+    note: '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Times New Roman", "SBL Greek", "SBL Hebrew", serif',
+    ui: '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", serif',
+    orig: '"Times New Roman", "SBL Greek", "SBL BibLit", "Ezra SIL", "SBL Hebrew", "Noto Sans Hebrew", serif',
+  };
+
+  function fontStack(f, targetId) {
     if (!f) return 'sans-serif';
     const f2 = f.trim();
+    if (APP_FONTS.includes(f2)) {
+      const fb = FONT_FALLBACKS[targetId] || FONT_FALLBACKS.body;
+      return `"${f2}", ${fb}`;
+    }
     if (/^['"]/.test(f2) || f2 === 'sans-serif' || f2 === 'serif' || f2 === 'monospace') return f2;
     return `'${f2}', sans-serif`;
+  }
+
+  // 웹글꼴을 아직 안 불렀어도 고르는 즉시 모양이 바뀌도록 미리 불러 둔다.
+  function preloadFont(name) {
+    const f = String(name || '').trim();
+    const app = appFontOf(f);
+    if (!app || !document.fonts || !document.fonts.load) return Promise.resolve();
+    return Promise.all([
+      document.fonts.load(`16px "${app}"`, '가나다라마바사 ABC abc'),
+      document.fonts.load(`700 16px "${app}"`, '가나다라마바사 ABC abc'),
+    ]).catch(() => {});
   }
 
   // ---- 접근자 (패널에서 쓴다)
@@ -238,7 +297,7 @@
   function resetToDefault() { store.fmt = normalize(null); svc(); }
 
   window.Fmt = {
-    FONT_CANDIDATES, TARGETS, VN_MODES, DEFAULTS, availableFonts,
+    FONT_CANDIDATES, APP_FONTS, TARGETS, VN_MODES, DEFAULTS, availableFonts, appFonts, appFontOf, preloadFont,
     value, set, target, setTarget,
     savePreset, loadPreset, deletePreset, presetNames, resetToDefault,
     bump, resetSize, apply, applyTheme, onChange, emit,
