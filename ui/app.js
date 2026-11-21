@@ -955,13 +955,15 @@ async function openArticle(id, title) {
 (function injectCommStyle() {
   const st = document.createElement('style');
   st.textContent = [
-    '.comm-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line)}',
+    // 패널 본문(.p-body, overflow:auto)이 스크롤 컨테이너이므로 그 기준으로 상단에 붙인다.
+    // 위아래 여백을 본문 padding(8px 12px)만큼 음수로 당겨 스크롤한 내용이 옆·위로 비치지 않게 한다.
+    '.comm-top{position:sticky;top:-8px;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-8px -12px 6px;padding:8px 12px 6px;background:var(--bg);border-bottom:1px solid var(--line)}',
     '.comm-top .subtabs{flex:1;margin:0}',
     '.comm-top .cv{display:flex;flex:none}',
     '.comm-top .cv button{font-size:12px;padding:1px 8px;border-radius:0}',
     '.comm-top .cv button:first-child{border-radius:6px 0 0 6px}',
     '.comm-top .cv button:last-child{border-radius:0 6px 6px 0;border-left:none}',
-    '.cnote{scroll-margin-top:6px}',
+    '.cnote{scroll-margin-top:46px}',
     '.cnote .cr{display:inline-block;font-size:12px;color:var(--acc);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-right:6px}',
     '.cnote.hl{background:var(--sel);border-radius:6px;transition:background .3s}',
     '.csec{font-weight:600;color:var(--acc);margin:10px 0 2px;padding-top:6px;border-top:1px solid var(--line)}',
