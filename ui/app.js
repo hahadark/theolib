@@ -251,7 +251,7 @@ function tileHtml(f) {
     : '';
   const grp = f.kind === 'bible' && !grpSel ? `<span class="it-grp muted">${esc(f.grp)}</span>` : '';
   return `<button type="button" class="it-tile${on ? ' on' : ''}${hid ? ' hidden' : ''}" data-id="${esc(f.id)}" data-kind="${esc(f.kind)}">
-    <span class="it-tile-top"><span class="it-name">${esc(f.name)}</span>${key ? `<span class="it-hide" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '보이기' : '숨기기'}</span>` : ''}</span>
+    <span class="it-tile-top"><span class="it-name">${esc(f.name)}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '👁 보임' : '👁 숨김'}</span>` : ''}</span>
     <span class="it-tile-meta">${grpSel}${grp}${stTxt ? `<span class="it-status ${stCls}">${stTxt}</span>` : ''}<span class="it-bytes muted">${fmtB(f.bytes)}</span></span>
     ${f.license ? `<span class="it-license muted">${esc(f.license)}</span>` : ''}
     <span class="it-progress"></span>
