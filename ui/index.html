@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>신학 서재</title>
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="layout.css">
 </head>
 <body>
 <header>
@@ -28,16 +29,15 @@
       <span class="spacer"></span>
       <button id="cite" title="선택한 절과 출처를 복사합니다 (2,000자 제한)">인용 복사</button>
     </div>
-    <div class="cols">
-      <div id="text" class="pane"></div>
-      <aside class="pane side">
-        <div><span id="side-head" class="muted">절을 누르면 주석이 나옵니다.</span> <button id="whole" hidden>장 전체 주석</button></div>
-        <div id="comm-tabs" class="subtabs"></div>
-        <div id="notes"></div>
-        <details id="orig-box"><summary>원전 분해</summary><div id="parse"></div></details>
-        <div id="lexbox"></div>
-      </aside>
+    <div class="bar layout-bar">
+      <button id="add-panel" title="패널 추가">＋ 패널 추가</button>
+      <button id="layout-save" title="이름 붙여 배치 저장">배치 저장</button>
+      <button id="layout-load" title="저장한 배치 불러오기">배치 불러오기</button>
+      <button id="layout-default" title="기본 배치로">기본 배치로</button>
+      <button id="format-btn" title="글 서식">Aa 서식</button>
+      <span id="layout-name" class="muted"></span>
     </div>
+    <div id="panes"></div>
   </section>
   <section id="view-search" hidden>
     <div class="bar">
@@ -67,6 +67,9 @@
     </div>
   </section>
 </main>
+<script src="dev-mock.js"></script>
+<script src="format.js"></script>
+<script src="layout.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
