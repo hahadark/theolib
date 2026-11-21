@@ -1,7 +1,8 @@
 /* layout.css — 성경 보기 화면의 패널 트리·끌어 놓기·경계선 스타일 */
 
 /* ---- 패널 트리 */
-#panes { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+#workspace { flex: 1; min-height: 0; display: flex; }
+#panes { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
 
 .p-split { display: flex; min-width: 0; min-height: 0; flex: 1; position: relative; }
 .p-split.horizontal { flex-direction: row; }
@@ -84,10 +85,12 @@ mark { background: var(--hl, #ffe08a); }
 .vnum.bracket::after { content: ')'; }
 .vnum.hidden { display: none; }
 
-/* ---- 서식 팝오버 */
-.format-pop { position: fixed; top: 60px; right: 16px; z-index: 50; width: 380px; max-height: 80vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
-.format-pop .fp-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); }
-.format-pop .fp-close { cursor: pointer; color: var(--mut); }
+/* ---- 글 서식 서랍 (오른쪽에 붙고, 열리면 패널 영역이 그만큼 줄어든다) */
+.format-pop { flex: none; width: 340px; min-width: 0; border-left: 1px solid var(--line); background: var(--bg); overflow-y: auto; display: flex; flex-direction: column; }
+.format-pop[hidden] { display: none; }
+.format-pop .fp-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); flex: none; position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.format-pop .fp-close { cursor: pointer; color: var(--mut); font-size: 13px; border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; }
+.format-pop .fp-close:hover { background: var(--line); }
 .format-pop .fp-body { padding: 10px 12px; }
 .format-pop .fp-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
 .format-pop .fp-tabs button { border: 1px solid var(--line); background: none; color: var(--fg); border-radius: 4px; cursor: pointer; padding: 2px 8px; }

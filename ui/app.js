@@ -532,13 +532,14 @@ $('#layout-default').onclick = () => {
   if (defs[key]) { Layout.setRoot(defs[key].root); toolbarName(); }
 };
 
-// ---- 서식 UI (간단한 팝오버)
+// ---- 서식 UI (오른쪽 서랍)
 function buildFormatUI() {
   const host = document.createElement('div');
   host.id = 'format-pop';
   host.className = 'format-pop';
   host.hidden = true;
-  document.body.appendChild(host);
+  const ws = document.querySelector('#workspace') || document.body;
+  ws.appendChild(host);
   return host;
 }
 
@@ -584,17 +585,21 @@ function renderFormatHost() {
         <div>글자 크기 배율: <input id="fp-scale" type="number" step="0.1" min="0.5" max="3" value="${panel.settings.fontScale || 1}"></div>
         <div>글 폭: <input id="fp-maxw" value="${esc(panel.settings.maxW || '')}" placeholder="예: 46em (비우면 공통)"></div>
       </div>`;
-    const apply = document.createElement('button');
-    apply.textContent = '적용';
-    body.appendChild(apply);
-    apply.onclick = () => {
+    // 값이 바뀌면 바로 반영
+    const applyPanel = () => {
       panel.settings.useGlobal = body.querySelector('#fp-global').checked;
       panel.settings.fontScale = parseFloat(body.querySelector('#fp-scale').value) || 1;
       panel.settings.maxW = body.querySelector('#fp-maxw').value.trim() || null;
       panel.saveSettings();
       renderAll();
-      formatHost.hidden = true;
     };
+    body.querySelector('#fp-global').onchange = () => {
+      const u = body.querySelector('#fp-global').checked;
+      body.querySelector('#fp-panel').style.cssText = u ? 'opacity:.5;pointer-events:none' : '';
+      applyPanel();
+    };
+    body.querySelector('#fp-scale').oninput = applyPanel;
+    body.querySelector('#fp-maxw').oninput = applyPanel;
   } else {
     const targets = Fmt.TARGETS;
     const tb = document.createElement('div');
@@ -614,9 +619,9 @@ function renderFormatHost() {
         <div class="fp-row"><label>문단 간격</label><input class="fp-para" value="${esc(o.f.para)}"></div>
         <div class="fp-row"><label>글 폭</label><input class="fp-maxw" value="${esc(o.f.maxW)}" placeholder="46em / none"></div>
         <div class="fp-row"><label>정렬</label><select class="fp-align"><option value="left" ${o.f.align === 'left' ? 'selected' : ''}>왼쪽</option><option value="justify" ${o.f.align === 'justify' ? 'selected' : ''}>양쪽</option></select></div>
-        <div class="fp-row"><label>절 번호</label><span class="fp-vn">${o.vns}</span></div>
-        <button class="fp-apply">적용</button>`;
-      content.querySelector('.fp-apply').onclick = () => {
+        <div class="fp-row"><label>절 번호</label><span class="fp-vn">${o.vns}</span></div>`;
+      // 값이 바뀌면 바로 반영
+      const applyNow = () => {
         const patch = {
           font: content.querySelector('.fp-font').value,
           size: +content.querySelector('.fp-size').value,
@@ -630,6 +635,14 @@ function renderFormatHost() {
         Fmt.setTarget(tid, patch);
         renderAll();
       };
+      content.querySelector('.fp-font').onchange = applyNow;
+      content.querySelector('.fp-size').oninput = applyNow;
+      content.querySelector('.fp-line').oninput = applyNow;
+      content.querySelector('.fp-letter').oninput = applyNow;
+      content.querySelector('.fp-para').oninput = applyNow;
+      content.querySelector('.fp-maxw').oninput = applyNow;
+      content.querySelector('.fp-align').onchange = applyNow;
+      content.querySelector('.fp-vn input:checked') && (content.querySelector('.fp-vn').onchange = applyNow);
     }
     // 탭
     for (const t of targets) {
@@ -683,8 +696,12 @@ function renderFormatHost() {
   head.parentNode.insertBefore(body, head.nextSibling);
 }
 
-$('#format-btn').onclick = openFormat;
+$('#format-btn').onclick = () => { if (formatHost && !formatHost.hidden) formatHost.hidden = true; else openFormat(); };
 Layout.setOpenPanelFormat(openPanelFormat);
+
+// Esc 로 서식 서랍 닫기
+function closeFormat() { if (formatHost) formatHost.hidden = true; }
+window.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && formatHost && !formatHost.hidden) closeFormat(); });
 
 // ---- 단축키: ⌘+ / ⌘- / ⌘0 (활성 패널 우선, 없으면 본문 공통)
 function activePanel() {
