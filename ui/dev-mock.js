@@ -136,6 +136,18 @@
     items: mockItems,
   }]; }
 
+  // ---- 책갈피·메모·하이라이트 가짜 저장소(메모리). 코어 user.rs 와 같은 모양을 돌려준다.
+  let USER = { bookmarks: [], memos: [], highlights: {} }; // highlights: "bk:ch:v" -> color
+  let userSeq = 1;
+  function hlRows(bk, ch) {
+    const out = [];
+    for (const k in USER.highlights) {
+      const [b, c, v] = k.split(':').map(Number);
+      if (b === bk && c === ch) out.push({ id: 0, bk: b, ch: c, v, color: USER.highlights[k] });
+    }
+    return out.sort((a, b) => a.v - b.v);
+  }
+
   const FREE_URL = 'mock://free-bundle';
 
   function mockInvoke(cmd, args) {
@@ -237,6 +249,49 @@
       case 'goto_ref': r = args.input && /\d/.test(args.input) ? [44, 24, 10] : null; break;
       case 'articles': r = ARTICLES; break;
       case 'article_body': r = '시험 소논문 본문입니다.<br>둘째 줄.'; break;
+
+      case 'user_list': {
+        // 코어와 같은 모양: 책갈피는 전부, 메모는 bk(및 ch>0 이면 ch)로 거르고, 하이라이트는 bk·ch 정확히.
+        r = {
+          bookmarks: USER.bookmarks.slice(),
+          memos: USER.memos.filter((x) => x.bk === args.bk && (args.ch === 0 || x.ch === args.ch)),
+          highlights: hlRows(args.bk, args.ch),
+        };
+        break;
+      }
+      case 'bookmark_add': {
+        const id = userSeq++;
+        USER.bookmarks.push({ id, bk: args.bk, ch: args.ch, v: args.v, label: args.label || '', created: '시험시각' });
+        r = id; break;
+      }
+      case 'bookmark_delete': {
+        const before = USER.bookmarks.length;
+        USER.bookmarks = USER.bookmarks.filter((x) => x.id !== args.id);
+        r = USER.bookmarks.length < before; break;
+      }
+      case 'memo_save': {
+        if (args.id && USER.memos.some((x) => x.id === args.id)) {
+          const m = USER.memos.find((x) => x.id === args.id);
+          m.body = args.body; m.updated = '시험시각';
+          r = m.id;
+        } else {
+          const id = userSeq++;
+          USER.memos.push({ id, bk: args.bk, ch: args.ch, v: args.v, body: args.body, updated: '시험시각' });
+          r = id;
+        }
+        break;
+      }
+      case 'memo_delete': {
+        const before = USER.memos.length;
+        USER.memos = USER.memos.filter((x) => x.id !== args.id);
+        r = USER.memos.length < before; break;
+      }
+      case 'highlight_set': {
+        const key = args.bk + ':' + args.ch + ':' + args.v;
+        if (!args.color) delete USER.highlights[key];
+        else USER.highlights[key] = args.color;
+        r = null; break;
+      }
 
       default: r = null;
     }

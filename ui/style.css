@@ -162,3 +162,53 @@ table.items tr.hidden-row:hover{opacity:.8}
 .it-sexp{font-size:12px;color:var(--acc);cursor:pointer;white-space:nowrap}
 .it-books{display:flex;flex-direction:column;gap:6px;min-width:0;padding:4px 0 6px 10px;border-left:2px solid var(--line)}
 .comm-miss{margin:8px 0;padding:8px 10px;border:1px dashed var(--line);border-radius:6px}
+
+/* ---- 책갈피·메모·하이라이트 (절 표식·배경·메뉴·말풍선·대화상자·내 기록) ---- */
+/* 하이라이트 배경(절마다 색). 반투명으로 밝게/어둡게 모두에서 살짝 보인다. */
+.vrow.hl-yellow{background:rgba(255,214,60,.35)}
+.vrow.hl-green{background:rgba(80,200,120,.30)}
+.vrow.hl-pink{background:rgba(255,110,170,.28)}
+.vrow.sel.hl-yellow,.vrow.sel.hl-green,.vrow.sel.hl-pink{background:var(--sel)}
+/* 절 번호 옆 작은 표식(책갈피·메모) */
+.umark{font-size:.72em;margin-left:3px;cursor:pointer;vertical-align:baseline;user-select:none;-webkit-user-select:none}
+.umark.bm{color:var(--acc)}
+.umark.mm{color:var(--acc)}
+
+/* 절 메뉴(오른쪽 클릭 / 맥 Ctrl+클릭 / 길게 누르기) */
+.verse-menu{position:fixed;z-index:2000;min-width:172px;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:4px;font-size:13px}
+.verse-menu .vm-head{padding:3px 8px;font-weight:700;color:var(--mut);font-size:12px;border-bottom:1px solid var(--line);margin-bottom:3px}
+.verse-menu .vm-sep{height:1px;background:var(--line);margin:3px 4px}
+.verse-menu button{display:block;width:100%;text-align:left;border:none;background:none;color:var(--fg);padding:5px 8px;border-radius:5px;cursor:pointer;font-size:13px}
+.verse-menu button:hover{background:var(--line)}
+.verse-menu button.on{color:var(--acc);font-weight:600}
+.verse-menu button.cm-yellow::before,.verse-menu button.cm-green::before,.verse-menu button.cm-pink::before{content:'';display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:middle}
+.verse-menu button.cm-yellow::before{background:#ffd63c}
+.verse-menu button.cm-green::before{background:#50c878}
+.verse-menu button.cm-pink::before{background:#ff6eaa}
+
+/* 메모 말풍선 */
+.memo-bubble{position:fixed;z-index:2000;max-width:320px;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.18);padding:8px 10px;font-size:13px;white-space:pre-wrap}
+
+/* 메모 대화 상자 */
+.memo-dialog-backdrop{position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center;padding:16px}
+.memo-dialog-backdrop[hidden]{display:none}
+.memo-dialog{width:min(420px,92vw);background:var(--bg);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column}
+.memo-dialog .md-head{display:flex;align-items:baseline;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.memo-dialog .md-ref{font-size:12px}
+.memo-dialog .md-body{min-height:120px;resize:vertical;border:none;background:var(--bg);color:var(--fg);padding:10px 12px;font:inherit;line-height:1.6}
+.memo-dialog .md-body:focus{outline:none}
+.memo-dialog .md-actions{display:flex;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line)}
+.memo-dialog .md-actions .spacer{flex:1}
+.memo-dialog .md-actions button{min-height:32px}
+.memo-dialog .md-save{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+.memo-dialog .md-del{color:var(--err);border-color:var(--err)}
+
+/* 내 기록 패널 */
+.rec-bar{display:flex;align-items:center;gap:8px;padding:6px 0 8px;border-bottom:1px solid var(--line)}
+.rec-bar input{flex:1;min-width:0}
+.rec-list{display:flex;flex-direction:column;gap:2px;padding-top:6px}
+.rec-item{display:flex;align-items:baseline;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer}
+.rec-item:hover{background:var(--sel)}
+.rec-icon{flex:none}
+.rec-ref{flex:none;font-weight:600;font-size:13px;color:var(--acc);white-space:nowrap}
+.rec-body{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg);font-size:13px}

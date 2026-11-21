@@ -17,6 +17,7 @@
     lex: { name: '사전', defaultSettings: {} },
     search: { name: '검색', defaultSettings: {} },
     article: { name: '소논문', defaultSettings: {} },
+    records: { name: '내 기록', defaultSettings: { q: '' } },
   };
 
   // 패널 id → 종류. id 는 `kind` 또는 `kind2`, `kind3` … 꼴.
