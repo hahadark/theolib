@@ -29,10 +29,19 @@
 .p-link.on { background: var(--acc, #264678); color: #fff; border-color: var(--acc, #264678); }
 .p-body { flex: 1; overflow: auto; padding: 8px 12px; min-height: 0; }
 
-/* 드래그 드롭 힌트 */
+/* 드래그 드롭 힌트 (포인터 이벤트) */
 .p-pane.dragging { opacity: 0.4; }
+body.p-dragging, body.p-dragging * { cursor: grabbing; }
 .p-pane.drop-center { outline: 2px dashed var(--acc, #264678); outline-offset: -2px; }
-.p-pane.drop-edge { outline: 2px solid var(--acc, #264678); outline-offset: -2px; background: rgba(38,70,120,0.06); }
+.p-pane.drop-edge { outline: 2px solid transparent; }
+.p-pane.drop-edge::before {
+  content: ''; position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: rgba(38,70,120,0.22); border-radius: 4px;
+}
+.p-pane.drop-edge-t::before { inset: 0 0 50% 0; }
+.p-pane.drop-edge-b::before { inset: 50% 0 0 0; }
+.p-pane.drop-edge-l::before { inset: 0 50% 0 0; }
+.p-pane.drop-edge-r::before { inset: 0 0 0 50%; }
 
 /* ---- 서식 변수 적용 대상 */
 .fmt-body { font-family: var(--body-font); font-size: var(--body-size); line-height: var(--body-line); letter-spacing: var(--body-letter); text-align: var(--body-align); }

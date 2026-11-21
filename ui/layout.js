@@ -148,7 +148,6 @@
 
     const head = document.createElement('div');
     head.className = 'p-head';
-    head.draggable = true;
 
     const kind = document.createElement('span');
     kind.className = 'p-kind';
@@ -343,69 +342,103 @@
     return { extracted, remaining };
   }
 
-  // ---- 드래그 앤 드롭
+  // ---- 드래그 앤 드롭 (포인터 이벤트 기반: 데스크톱 WebView 에서 파일 끌어놓기와 충돌하지 않도록 HTML5 DnD 대신 쓴다)
   function initDrag() {
-    let dragged = null;
-    container.addEventListener('dragstart', (e) => {
+    let drag = null; // { id, startX, startY, moved }
+
+    function clearHints() {
+      container.querySelectorAll('.drop-edge, .drop-center, .dragging, .drop-edge-t, .drop-edge-b, .drop-edge-l, .drop-edge-r').forEach((x) => x.classList.remove('drop-edge', 'drop-center', 'dragging', 'drop-edge-t', 'drop-edge-b', 'drop-edge-l', 'drop-edge-r'));
+      container.querySelectorAll('.p-pane').forEach((p) => { delete p.dataset.dropZone; });
+    }
+
+    function zoneOf(pane, clientX, clientY) {
+      const r = pane.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return null;
+      const x = (clientX - r.left) / r.width, y = (clientY - r.top) / r.height;
+      if (x > 0.3 && x < 0.7 && y > 0.3 && y < 0.7) return 'center';
+      if (x < 0.3 && y >= 0.3 && y <= 0.7) return 'left';
+      if (x > 0.7 && y >= 0.3 && y <= 0.7) return 'right';
+      if (y < 0.3) return 'top';
+      return 'bottom';
+    }
+
+    function decorate(pane, zone) {
+      pane.classList.remove('drop-edge', 'drop-center', 'drop-edge-t', 'drop-edge-b', 'drop-edge-l', 'drop-edge-r');
+      if (zone === 'center') pane.classList.add('drop-center');
+      else if (zone) pane.classList.add('drop-edge', 'drop-edge-' + zone.charAt(0));
+    }
+
+    function endDrag() { clearHints(); drag = null; document.body.classList.remove('p-dragging'); }
+
+    container.addEventListener('pointerdown', (e) => {
       const head = e.target.closest('.p-head');
       if (!head) return;
+      // 머리줄의 단추(닫기·복제·연동·서식)는 끌지 않는다.
+      if (e.target.closest('.p-btn, .p-link')) return;
       const pane = head.closest('.p-pane');
-      dragged = pane.dataset.pid;
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', dragged); } catch (err) {}
-      pane.classList.add('dragging');
-    });
-    container.addEventListener('dragend', () => { clearHints(); dragged = null; });
-    container.addEventListener('dragover', (e) => {
-      if (!dragged) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      const pane = e.target.closest('.p-pane');
       if (!pane) return;
-      clearHints();
-      if (pane.dataset.pid === dragged) return;
-      const r = pane.getBoundingClientRect();
-      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-      // 가운데(중심 ~35% 사각)는 맞바꾸기, 가장자리는 붙이기
-      let zone;
-      if (x > 0.3 && x < 0.7 && y > 0.3 && y < 0.7) zone = 'center';
-      else if (x < 0.3) zone = 'left';
-      else if (x > 0.7) zone = 'right';
-      else if (y < 0.3) zone = 'top';
-      else zone = 'bottom';
-      pane.classList.add(zone === 'center' ? 'drop-center' : 'drop-edge');
-      pane.dataset.dropZone = zone;
+      drag = { id: pane.dataset.pid, startX: e.clientX, startY: e.clientY, moved: false };
+      // 끌기 중 텍스트 선택 방지
+      try { head.setPointerCapture(e.pointerId); } catch (err) {}
     });
-    container.addEventListener('dragleave', (e) => {
-      const pane = e.target.closest('.p-pane');
-      if (pane) { pane.classList.remove('drop-edge', 'drop-center'); }
-    });
-    container.addEventListener('drop', (e) => {
-      if (!dragged) return;
-      e.preventDefault();
-      const target = e.target.closest('.p-pane');
-      if (!target || target.dataset.pid === dragged) return;
-      const zone = target.dataset.dropZone || 'bottom';
-      const srcId = dragged, dstId = target.dataset.pid;
-      let root;
-      if (zone === 'center') {
-        root = swapPanels(rootFromDOM(), srcId, dstId);
-      } else {
-        const { extracted, remaining } = extractNode(rootFromDOM(), srcId);
-        root = extracted ? insertPanel(remaining, dstId, extracted, zone) : rootFromDOM();
+
+    container.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+      if (!drag.moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        const src = container.querySelector(`.p-pane[data-pid="${CSS.escape(drag.id)}"]`);
+        if (src) src.classList.add('dragging');
+        document.body.classList.add('p-dragging');
       }
+      e.preventDefault();
       clearHints();
-      dragged = null;
-      renderRoot(root);
+      // 끌리는 패널은 흐리게 유지한다(clearHints 가 지워도 다시 표시).
+      const srcEl = container.querySelector(`.p-pane[data-pid="${CSS.escape(drag.id)}"]`);
+      if (srcEl) srcEl.classList.add('dragging');
+      // 포인터 캡처 때문에 e.target 이 캡처된(끌리는) 머리줄로 고정될 수 있다.
+      // 실제 커서 아래 요소는 elementFromPoint 로 찾는다.
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const target = under ? under.closest('.p-pane') : null;
+      if (target && target.dataset.pid !== drag.id) {
+        const zone = zoneOf(target, e.clientX, e.clientY);
+        decorate(target, zone);
+        target.dataset.dropZone = zone || '';
+      }
     });
-  }
-  function clearHints() {
-    container.querySelectorAll('.drop-edge, .drop-center, .dragging').forEach((x) => x.classList.remove('drop-edge', 'drop-center', 'dragging'));
+
+    container.addEventListener('pointerup', (e) => {
+      if (!drag) return;
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      const target = under ? under.closest('.p-pane') : null;
+      if (drag.moved && target && target.dataset.pid !== drag.id && target.dataset.dropZone) {
+        const zone = target.dataset.dropZone;
+        const srcId = drag.id, dstId = target.dataset.pid;
+        let root;
+        if (zone === 'center') {
+          root = swapPanels(rootFromDOM(), srcId, dstId);
+        } else {
+          const side = zone === 'top' || zone === 'bottom' ? zone : zone; // left/right/top/bottom 그대로
+          const { extracted, remaining } = extractNode(rootFromDOM(), srcId);
+          root = extracted ? insertPanel(remaining, dstId, extracted, side) : rootFromDOM();
+        }
+        endDrag();
+        renderRoot(root);
+        return;
+      }
+      endDrag();
+    });
+
+    container.addEventListener('pointercancel', () => { if (drag) endDrag(); });
+
+    // Esc 로 취소
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drag) endDrag(); });
   }
 
-  // ---- 경계선 끌어 크기 조절
+  // ---- 경계선 끌어 크기 조절 (포인터 이벤트)
   function initResize() {
-    container.addEventListener('mousedown', (e) => {
+    container.addEventListener('pointerdown', (e) => {
       const grip = e.target.closest('.p-grip');
       if (!grip) return;
       e.preventDefault();
@@ -422,12 +455,14 @@
         applyRatio(split, Math.min(0.9, Math.max(0.1, startRatio + d / total)));
       };
       const onUp = () => {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
         setLast(rootFromDOM());
       };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
     });
   }
 
