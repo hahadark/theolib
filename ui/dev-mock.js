@@ -123,14 +123,23 @@
   })();
 
   let mockInstalledFiles = ['bible-ko', 'orig', 'comm'];
+  // ItemRec 모양(코어 source.rs 와 동일): series·bk·series_name·book 은 ItemRec 에 없다.
+  // '받은 자료' 화면 시험용으로 몇 개 받은 상태를 미리 넣는다(일부는 sha256 이 달라 '새 판 있음').
   let mockItems = [
-    { id: 'bible:한국어:1', kind: 'bible', name: '가짜 번역본 한국어 1', grp: '한국어', sha256: 'bible:한국어:1', bytes: 80000, db_bytes: 160000, license: '가짜 근거' },
-    { id: 'comm:가짜책별66:44', kind: 'comm', name: '가짜 책별 주석 66 · 가짜책 44', series: '가짜책별66', series_name: '가짜 책별 주석 66', bk: 44, book: '가짜책 44', sha256: 'old-sha', bytes: 100000, db_bytes: 200000, license: '가짜 근거' },
+    { id: 'bible:한국어:1', kind: 'bible', name: '가짜 번역본 한국어 1', grp: '한국어', sha256: 'bible:한국어:1', bytes: 80000, db_bytes: 160000, license: '가짜 근거', source: 'mock', fts: false },
+    { id: 'bible:한국어:2', kind: 'bible', name: '가짜 번역본 한국어 2', grp: '한국어', sha256: 'bible:한국어:2', bytes: 90000, db_bytes: 180000, license: '가짜 근거', source: 'mock', fts: false },
+    { id: 'bible:영어:1', kind: 'bible', name: '가짜 번역본 영어 1', grp: '영어', sha256: 'bible:영어:1', bytes: 85000, db_bytes: 170000, license: '가짜 근거', source: 'mock', fts: false },
+    { id: 'code:원어번호:1', kind: 'code', name: '가짜 원어 번호 본문 1', grp: '원어', sha256: 'code0', bytes: 80000, db_bytes: 160000, license: '가짜 근거', source: 'mock', fts: false },
+    { id: 'lex:사전:1', kind: 'lex', name: '가짜 사전 1', grp: '한글', sha256: 'lex0', bytes: 25000, db_bytes: 50000, license: '가짜 근거', source: 'mock', fts: false },
+    { id: 'comm:가짜책별66:44', kind: 'comm', name: '가짜 책별 주석 66 · 가짜책 44', grp: '주석', sha256: 'old-sha', bytes: 100000, db_bytes: 200000, license: '가짜 근거', source: 'mock', fts: false },
+    { id: 'comm:가짜책별66:45', kind: 'comm', name: '가짜 책별 주석 66 · 가짜책 45', grp: '주석', sha256: '가짜책별6645', bytes: 106000, db_bytes: 212000, license: '가짜 근거', source: 'mock', fts: false },
   ];
 
+  // 마지막 갱신 시각 흉내(브라우저에서 보기 좋게 고정값)
+  let mockUpdated = '2026-11-21 23:00';
   function mockSources() { return [{
     origin: 'mock://시험',
-    decl: { updated: '시험일', note: '시험용 자료입니다.', files: [] },
+    decl: { updated: mockUpdated, note: '시험용 자료입니다.', files: [] },
     installed: mockInstalledFiles,
     sources: [{ origin: 'mock://시험', title: '시험 자료', files: [] }],
     items: mockItems,
@@ -158,6 +167,14 @@
 
       case 'free_url': r = FREE_URL; break;
 
+      case 'free_status': r = { installed: mockInstalledFiles.some((f) => f.startsWith('bible')) }; break;
+
+      case 'reinstall_free': {
+        // 기본 자료(저작권 만료)를 다시 받는 흉내: 갱신 시각만 바꾼다.
+        mockUpdated = '2026-11-21 ' + new Date().toTimeString().slice(0, 5);
+        r = null; break;
+      }
+
       case 'preview_source': {
         const url = args.url;
         if (url === FREE_URL) {
@@ -175,13 +192,14 @@
 
       case 'add_source': {
         const f = MOCK_FILES.filter((x) => (args.files || []).includes(x.id));
-        for (const x of f) if (!mockItems.some((i) => i.id === x.id)) mockItems.push({ id: x.id, kind: x.kind, name: x.name, grp: x.grp, sha256: x.sha256, bytes: x.bytes, db_bytes: x.db_bytes, license: x.license });
+        for (const x of f) if (!mockItems.some((i) => i.id === x.id)) mockItems.push({ id: x.id, kind: x.kind, name: x.name, grp: x.grp, sha256: x.sha256, bytes: x.bytes, db_bytes: x.db_bytes, license: x.license, source: 'mock', fts: false });
         r = null; break;
       }
 
       case 'add_items': {
         const ids = args.ids || [];
-        for (const id of ids) { const x = MOCK_FILES.find((m) => m.id === id); if (x && !mockItems.some((i) => i.id === id)) mockItems.push({ id: x.id, kind: x.kind, name: x.name, grp: x.grp, sha256: x.sha256, bytes: x.bytes, db_bytes: x.db_bytes, license: x.license }); }
+        for (const id of ids) { const x = MOCK_FILES.find((m) => m.id === id); if (x && !mockItems.some((i) => i.id === id)) mockItems.push({ id: x.id, kind: x.kind, name: x.name, grp: x.grp, sha256: x.sha256, bytes: x.bytes, db_bytes: x.db_bytes, license: x.license, source: 'mock', fts: false }); }
+        mockUpdated = '2026-11-21 ' + new Date().toTimeString().slice(0, 5);
         r = null; break;
       }
 
@@ -214,7 +232,7 @@
         for (const it of items) {
           if (mockItems.some((i) => i.id === it.id) && !args.replace) { skipped.push(it.id); continue; }
           mockItems = mockItems.filter((i) => i.id !== it.id);
-          mockItems.push({ id: it.id, kind: it.kind, name: it.name, grp: it.grp, sha256: it.sha256, bytes: it.bytes, db_bytes: it.bytes * 2, license: it.license || '' });
+          mockItems.push({ id: it.id, kind: it.kind, name: it.name, grp: it.grp, sha256: it.sha256, bytes: it.bytes, db_bytes: it.bytes * 2, license: it.license || '', source: 'mock', fts: false });
           done.push(it.id);
         }
         r = [done, skipped]; break;
