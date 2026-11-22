@@ -251,10 +251,34 @@ pub fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-/// 선언 주소 기준으로 상대 주소를 푼다.
+/// 로컬 파일 경로인지(주소가 아님). `/…`, `X:\…`·`X:/…`, `\\…`(UNC) 를 로컬로 본다.
+pub fn is_local_path(s: &str) -> bool {
+    if s.contains("://") {
+        return false;
+    }
+    let b = s.as_bytes();
+    if b.first() == Some(&b'/') || b.first() == Some(&b'\\') {
+        return true;
+    }
+    // 윈도우 드라이브 글자 경로: C:\a\b, C:/a/b
+    b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/')
+}
+
+/// 선언 주소 기준으로 상대 주소를 푼다. base 가 로컬 경로면 파일 경로로 합친다.
 pub fn join_url(base: &str, rel: &str) -> String {
     if rel.contains("://") {
         return rel.to_string();
+    }
+    if is_local_path(base) {
+        let r = Path::new(rel);
+        if is_local_path(rel) || r.is_absolute() {
+            return rel.to_string();
+        }
+        let p = match Path::new(base).parent() {
+            Some(d) => d.join(r),
+            None => r.to_path_buf(),
+        };
+        return p.to_string_lossy().into_owned();
     }
     let no_q = base.split(['?', '#']).next().unwrap_or(base);
     let scheme_end = no_q.find("://").map(|i| i + 3).unwrap_or(0);
@@ -408,7 +432,7 @@ impl Ctx {
     pub fn origin(&self) -> String {
         match &self.gh {
             Some(g) => format!("github.com/{}/{}", g.owner, g.repo),
-            None if self.base.starts_with('/') => "내 폴더".to_string(),
+            None if is_local_path(&self.base) => "내 폴더".to_string(),
             None => String::new(),
         }
     }
@@ -426,7 +450,7 @@ impl Ctx {
     }
 
     pub fn declaration(&self) -> Result<Declaration> {
-        if self.base.starts_with('/') {
+        if is_local_path(&self.base) {
             let body = fs::read_to_string(&self.base).map_err(|_| anyhow::anyhow!("선언 파일을 읽지 못했습니다(파일 없음)."))?;
             return parse_declaration(&body);
         }
@@ -518,7 +542,7 @@ fn sha_of_part(p: &Path) -> Result<(Sha256, u64)> {
 fn download(url: &str, hdrs: &Hdrs, gh: bool, f: &FileDecl, gz: &Path, prog: Progress) -> Result<Sha256> {
     let info = gz.with_extension("part.info");
     let label = format!("{} 받는 중", f.id);
-    if url.starts_with('/') {
+    if is_local_path(url) {
         // 폴더로 전달받은 파일: 복사하면서 해시 계산
         let mut h = Sha256::new();
         let mut rd = File::open(url).map_err(|_| anyhow::anyhow!("{}: 파일이 폴더에 없습니다", f.id))?;
@@ -1110,5 +1134,34 @@ mod tests {
         assert!(explain_status(403, true, true).contains("한도"));
         assert!(explain_status(401, false, true).contains("토큰"));
         assert!(parse_declaration(r#"{"format":"other/1","files":[]}"#).is_err());
+    }
+
+    #[test]
+    fn local_path_detection() {
+        assert!(is_local_path("/a/b/theolib.json"));
+        assert!(is_local_path(r"C:\a\b.json"));
+        assert!(is_local_path("C:/a/b.json"));
+        assert!(is_local_path(r"\\server\share\x"));
+        assert!(!is_local_path("https://example.com/a.json"));
+        assert!(!is_local_path("http://127.0.0.1:8792/theolib.json"));
+        assert!(!is_local_path("theolib-bible-free.db.gz"));
+        assert!(!is_local_path("a/b.json"));
+        assert!(!is_local_path("C:"));
+        assert!(!is_local_path(""));
+    }
+
+    #[test]
+    fn local_base_relative_url() {
+        let dir = std::env::temp_dir().join("theolib-decl-test");
+        let base = dir.join("theolib.json").to_string_lossy().into_owned();
+        assert_eq!(join_url(&base, "pack.db.gz"), dir.join("pack.db.gz").to_string_lossy());
+        assert_eq!(join_url(&base, "sub/pack.db.gz"), dir.join("sub/pack.db.gz").to_string_lossy());
+        // 이미 절대 경로면 그대로 쓴다
+        let abs = dir.join("other.db.gz").to_string_lossy().into_owned();
+        assert_eq!(join_url(&base, &abs), abs);
+        // 주소 base 는 지금처럼 문자열로 합친다
+        assert_eq!(join_url("https://ex.com/a/theolib.json", "p.gz"), "https://ex.com/a/p.gz");
+        assert_eq!(join_url("https://ex.com/a/theolib.json", "/p.gz"), "https://ex.com/p.gz");
+        assert_eq!(join_url("https://ex.com/a/x", "https://o.k/p.gz"), "https://o.k/p.gz");
     }
 }

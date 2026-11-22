@@ -834,3 +834,46 @@ fn scan_folder_timing() {
     let skipped = items.iter().filter(|i| !i.skip.is_empty()).count();
     println!("폴더 인식 {}개(건너뜀 {skipped}개), {:.2}초", items.len(), t0.elapsed().as_secs_f64());
 }
+
+/// 윈도우·유닉스 어느 쪽이든 OS 기본 구분자 그대로의 절대 경로 선언으로 설치되는지(로컬 base + 상대 url).
+#[test]
+fn local_declaration_windows_path() {
+    use sha2::{Digest, Sha256};
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path().join("decl");
+    std::fs::create_dir_all(&dir).unwrap();
+    // 작은 묶음 DB: meta(format, pack) 만 있으면 verify_db 를 통과한다.
+    let db = dir.join("tiny.db");
+    {
+        let c = rusqlite::Connection::open(&db).unwrap();
+        c.execute_batch("CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT); CREATE TABLE version(id TEXT PRIMARY KEY, name TEXT, grp TEXT, ord INTEGER, descr TEXT); CREATE TABLE verse(version TEXT, book INTEGER, chapter INTEGER, verse INTEGER, text TEXT);").unwrap();
+        c.execute("INSERT INTO meta(k,v) VALUES('format','theolib-db/1')", []).unwrap();
+        c.execute("INSERT INTO meta(k,v) VALUES('pack','bible-tiny')", []).unwrap();
+        c.execute("INSERT INTO version(id,name) VALUES('Tiny','작은 시험 번역본')", []).unwrap();
+        c.execute("INSERT INTO verse(version,book,chapter,verse,text) VALUES('Tiny',44,24,10,'Governor beckoned')", []).unwrap();
+    }
+    let db_bytes = std::fs::read(&db).unwrap();
+    let db_sha = source::hex(&Sha256::digest(&db_bytes));
+    let mut enc = flate2::write::GzEncoder::new(vec![], flate2::Compression::default());
+    enc.write_all(&db_bytes).unwrap();
+    let gz = enc.finish().unwrap();
+    std::fs::write(dir.join("tiny.db.gz"), &gz).unwrap();
+    let decl = format!(
+        r#"{{"format":"theolib-db/1","title":"작은 시험 자료","files":[{{"id":"bible-tiny","url":"tiny.db.gz","bytes":{},"sha256":"{}","db_bytes":{},"db_sha256":"{}"}}]}}"#,
+        gz.len(),
+        source::hex(&Sha256::digest(&gz)),
+        db_bytes.len(),
+        db_sha
+    );
+    let decl_path = dir.join("theolib.json");
+    std::fs::write(&decl_path, decl).unwrap();
+    let home = Home::at(t.path().join("home"));
+    let st = source::add(&home, &decl_path.to_string_lossy(), None, &[], &mut |_, _, _| {}).unwrap();
+    assert_eq!(st.installed, vec!["bible-tiny".to_string()]);
+    assert!(st.origin.contains("폴더"));
+    assert!(home.db_path(source::SID, "bible-tiny").exists());
+    let r = Reader::open(&home).unwrap();
+    let rows = r.chapter(44, 24, &[s("Tiny")]).unwrap();
+    assert!(rows.iter().any(|x| x.v == 10 && x.texts[0].1.contains("Governor")));
+}

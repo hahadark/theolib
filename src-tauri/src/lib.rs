@@ -1,3 +1,4 @@
+pub mod study;
 mod update;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -201,13 +202,22 @@ fn free_url() -> String {
 
 /// 앱 리소스에 내장한 기본 자료(저작권 만료) 선언 파일의 경로를 찾는다.
 /// 번들에서는 `resources/free/theolib.json`이 `<리소스 폴더>/free/theolib.json`에 풀린다.
+/// 포터블판은 실행 파일 폴더 옆 `resources/free`(또는 `free`)를 함께 두므로 `current_exe()` 폴더도 찾는다.
 fn bundled_free_decl(app: &AppHandle) -> Option<std::path::PathBuf> {
     let dir = app.path().resource_dir().ok()?;
-    for cand in [
+    let mut cands = vec![
         dir.join("free/theolib.json"),
         dir.join("resources/free/theolib.json"),
         dir.join("theolib.json"),
-    ] {
+    ];
+    // 실행 파일 폴더 기준(포터블 설치본·자료 없는 설치본).
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            cands.push(parent.join("resources/free/theolib.json"));
+            cands.push(parent.join("free/theolib.json"));
+        }
+    }
+    for cand in cands {
         if cand.exists() {
             return Some(cand);
         }
@@ -514,12 +524,27 @@ fn update_set_token(url: String) -> R<()> {
 const SELFTEST_JS: &str = include_str!("../selftest.js");
 
 pub fn run() {
+    // 포터블 모드에서는 WebView2 자료 폴더(화면 설정·배치)도 자료 폴더를 따라가게 한다.
+    // main 시작 직후 다른 스레드가 없으므로 `set_var` 를 안전하게 부를 수 있다(edition 2024 unsafe).
+    #[cfg(target_os = "windows")]
+    {
+        if theolib_core::home::is_portable() {
+            if let Ok(h) = theolib_core::Home::default_location() {
+                let dir = h.root.clone();
+                // 자료 폴더는 Home.root 이다(data 폴더). 그 아래 webview 로 둔다.
+                unsafe {
+                    std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", dir.join("webview").to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
     let b = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             update::spawn_auto(app.handle().clone());
+            study::start_runner(app.handle().clone());
             // 처음 실행 때(설치된 자료가 없으면) 내장 기본 자료(저작권 만료)를 자동 설치한다.
             let h = app.handle().clone();
             std::thread::spawn(move || install_bundled_free(&h));
@@ -534,12 +559,14 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, selftest_report
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, selftest_report,
+        study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token,
+            study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");

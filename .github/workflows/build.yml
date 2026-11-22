@@ -33,6 +33,8 @@ jobs:
         run: cargo binstall tauri-cli --version ^2 --no-confirm --locked
 
       - name: 빌드 (NSIS 설치본)
+        env:
+          THEOLIB_DEFAULT_BASE: ${{ secrets.THEOLIB_DEFAULT_BASE }}
         run: cargo tauri build --bundles nsis
 
       - name: 설치본 이름 정리
@@ -100,6 +102,8 @@ jobs:
         run: cargo binstall tauri-cli --version ^2 --no-confirm --locked
 
       - name: 빌드 (.app 번들)
+        env:
+          THEOLIB_DEFAULT_BASE: ${{ secrets.THEOLIB_DEFAULT_BASE }}
         run: cargo tauri build --bundles app
 
       - name: 앱 압축 (수동 설치용 zip + 자동 업데이트용 .app.tar.gz)

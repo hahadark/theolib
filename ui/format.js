@@ -120,13 +120,15 @@
   const DEFAULTS = {
     theme: 'system',   // light | dark | sepia | system
     accent: '#264678', // 검색어 강조색
-    searchHl: '#ffe08a',
+    searchHl: '#FBE9A6',
     lineBreak: true,   // 절마다 줄바꿈
+    // 기본값(저장된 설정이 없을 때만 쓴다): 본문 나눔명조 17px·줄 간격 1.9,
+    // 주석·소논문 나눔바른고딕 15.5px·줄 간격 1.8·글 폭 44em, 화면 글자 나눔바른고딕 14px.
     target: {
-      body: { font: '-apple-system', size: 16, line: 1.6, letter: '0em', para: '0.5em', maxW: '46em', align: 'left', vn: 'super' },
-      note: { font: '-apple-system', size: 14, line: 1.5, letter: '0em', para: '0.4em', maxW: '40em', align: 'left', vn: 'super' },
+      body: { font: '나눔명조', size: 17, line: 1.9, letter: '0em', para: '0.6em', maxW: '46em', align: 'left', vn: 'super' },
+      note: { font: '나눔바른고딕', size: 15.5, line: 1.8, letter: '0em', para: '0.85em', maxW: '44em', align: 'left', vn: 'super' },
       orig: { font: 'Palatino', size: 17, line: 1.7, letter: '0em', para: '0.4em', maxW: '46em', align: 'left', vn: 'super' },
-      ui: { font: '-apple-system', size: 15, line: 1.6, letter: '0em', para: '0.5em', maxW: 'none', align: 'left', vn: 'super' },
+      ui: { font: '나눔바른고딕', size: 14, line: 1.55, letter: '0em', para: '0.5em', maxW: 'none', align: 'left', vn: 'super' },
     },
   };
 

@@ -23,6 +23,9 @@ pub struct UpdateState {
     pub status: String,
     pub version: String,
     pub message: String,
+    /// 포터블판(실행 파일 옆 data 폴더)이면 자동 업데이트를 하지 않는다
+    #[serde(default)]
+    pub portable: bool,
 }
 
 fn token() -> Option<String> {
@@ -53,7 +56,7 @@ pub fn set_token(url: &str) -> Result<(), String> {
 }
 
 fn state(app: &AppHandle, status: &str, version: &str, message: &str) -> UpdateState {
-    UpdateState { current: app.package_info().version.to_string(), status: status.into(), version: version.into(), message: message.into() }
+    UpdateState { current: app.package_info().version.to_string(), status: status.into(), version: version.into(), message: message.into(), portable: theolib_core::home::is_portable() }
 }
 
 /// 시험용: THEOLIB_UPDATE_ENDPOINT 가 loopback 주소일 때만 확인 주소를 바꾼다(서명 검증은 그대로).
@@ -64,15 +67,30 @@ fn endpoint_override() -> Option<url::Url> {
 }
 
 pub fn current_state(app: &AppHandle) -> UpdateState {
+    if portable_only() {
+        return portable_state(app);
+    }
     if let Some(r) = READY.lock().unwrap().as_ref() {
         return state(app, "ready", &r.update.version, "");
     }
     state(app, "none", "", "")
 }
 
+/// 포터블판이면 확인하지 않고 상태만 돌려준다.
+fn portable_only() -> bool {
+    theolib_core::home::is_portable()
+}
+
+fn portable_state(app: &AppHandle) -> UpdateState {
+    state(app, "portable", "", "포터블판은 자동 업데이트를 하지 않습니다. 새 판은 받은 곳(구글 드라이브)에서 다시 받으세요.")
+}
+
 /// manual=true 면 토큰 없음·실패도 알린다. false 면 조용히 넘어간다.
 pub async fn check(app: &AppHandle, manual: bool) -> UpdateState {
     use std::sync::atomic::Ordering;
+    if portable_only() {
+        return portable_state(app);
+    }
     if let Some(r) = READY.lock().unwrap().as_ref() {
         return state(app, "ready", &r.update.version, "");
     }
@@ -148,8 +166,11 @@ pub fn install_and_restart(app: &AppHandle) -> Result<(), String> {
     app.restart()
 }
 
-/// 앱 시작 30초 뒤, 이후 24시간마다 조용히 확인.
+/// 앱 시작 30초 뒤, 이후 24시간마다 조용히 확인. 포터블판은 하지 않는다.
 pub fn spawn_auto(app: AppHandle) {
+    if portable_only() {
+        return;
+    }
     tauri::async_runtime::spawn(async move {
         tokio_sleep(Duration::from_secs(30)).await;
         loop {

@@ -162,14 +162,16 @@
     res.className = 'p-res';
 
     const linkBtn = document.createElement('button');
-    linkBtn.className = 'p-link on';
+    linkBtn.type = 'button';
+    linkBtn.className = 'p-link on icon-btn';
     linkBtn.title = '구절 연동 (끄면 이 패널은 다른 구절에 머문다)';
-    linkBtn.textContent = '🔗';
+    linkBtn.setAttribute('aria-label', '구절 연동');
+    linkBtn.innerHTML = window.Icon ? window.Icon('link', 16) : '';
     linkBtn.onclick = () => setLinked(panel, !panel.linked);
 
-    const dupBtn = mkBtn('＋', '같은 종류 복제', () => duplicate(panel));
-    const fmtBtn = mkBtn('Aa', '이 패널 서식', () => openPanelFormat(panel));
-    const closeBtn = mkBtn('✕', '닫기', () => closePanel(panel));
+    const dupBtn = mkBtn('plus', '같은 종류 복제', () => duplicate(panel));
+    const fmtBtn = mkBtn('type', '이 패널 서식', () => openPanelFormat(panel));
+    const closeBtn = mkBtn('x', '닫기', () => closePanel(panel));
 
     head.append(kind, res, linkBtn, dupBtn, fmtBtn, closeBtn);
 
@@ -180,23 +182,33 @@
     panel.el = el; panel.head = head; panel.body = body; panel.resEl = res; panel.linkBtn = linkBtn;
     return el;
   }
-  function mkBtn(txt, title, fn) {
+  function mkBtn(icon, title, fn) {
     const b = document.createElement('button');
-    b.className = 'p-btn'; b.textContent = txt; b.title = title; b.onclick = fn;
+    b.type = 'button';
+    b.className = 'p-btn icon-btn';
+    b.innerHTML = window.Icon ? window.Icon(icon, 16) : '';
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.onclick = fn;
     return b;
   }
 
   function setLinked(panel, v) {
     panel.linked = v;
     if (v) panel.ref = null;
-    panel.linkBtn.className = 'p-link' + (v ? ' on' : '');
-    panel.linkBtn.textContent = v ? '🔗' : '🔓';
+    panel.linkBtn.className = 'p-link icon-btn' + (v ? ' on' : '');
+    panel.linkBtn.title = v ? '구절 연동 켜짐 (누르면 끈다)' : '구절 연동 꺼짐 (누르면 켠다)';
+    panel.linkBtn.innerHTML = window.Icon ? window.Icon('link', 16) : '';
     if (provider && provider.onLinkChange) provider.onLinkChange(panel);
   }
 
   function refreshPanelMeta(id) {
     const p = current.byId[id];
-    if (p && p.resEl && provider && provider.panelTitle) p.resEl.textContent = provider.panelTitle(p);
+    if (p && p.resEl && provider && provider.panelTitle) {
+      const t = provider.panelTitle(p) || '';
+      // 제목과 같은 말이면 부제를 비운다(예: 주석 / 주석).
+      p.resEl.textContent = t === p.name() ? '' : t;
+    }
     refreshNarrow();
   }
 
@@ -488,7 +500,8 @@
     if (!bar) return;
     bar.textContent = '';
     const ps = current.panes;
-    if (ps.length <= 1) { bar.classList.remove('on'); return; }
+    if (ps.length <= 1) { bar.classList.remove('on'); bar.hidden = true; return; }
+    bar.hidden = false;
     narrowActive = ps.some((p) => p.id === narrowActive) ? narrowActive : ps[0].id;
     for (const p of ps) {
       const b = document.createElement('button');

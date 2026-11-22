@@ -2,79 +2,214 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>신학 서재</title>
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="layout.css">
+<link rel="stylesheet" href="study.css">
+<link rel="stylesheet" href="settings.css">
 </head>
 <body>
-<header>
-  <strong class="brand">신학 서재</strong>
-  <nav id="tabs">
-    <button data-view="bible" class="on">성경 보기</button>
-    <button data-view="search">검색</button>
-    <button data-view="articles">소논문</button>
-    <button data-view="sources">자료 출처</button>
-  </nav>
-  <span class="spacer"></span>
-  <input id="goto" placeholder="구절 이동 (예: 행 24:10)" size="22">
-  <span class="future" title="이번 범위가 아닙니다">원본 스캔 · 바구니 · 허브 · AI (준비 중)</span>
-</header>
+<nav id="tabs" aria-label="주 메뉴">
+  <div class="rail-brand">
+    <svg class="rail-mark" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M11 6.5A3.5 3.5 0 0 0 7.5 3H3v16h5a3 3 0 0 1 3 3z"/>
+      <path d="M13 6.5A3.5 3.5 0 0 1 16.5 3H21v16h-5a3 3 0 0 0-3 3z"/>
+      <path d="M12 7.5v6"/><path d="M9.6 10.2h4.8"/>
+    </svg>
+    <span class="rail-brand-name">신학 서재</span>
+  </div>
+  <div class="rail-menu">
+    <button data-view="bible" class="on" title="성경 보기" aria-label="성경 보기"><span class="rail-ico" data-icon="book-open"></span><span class="rail-lab">성경</span></button>
+    <button data-view="search" title="검색" aria-label="검색"><span class="rail-ico" data-icon="search"></span><span class="rail-lab">검색</span></button>
+    <button data-view="articles" title="소논문" aria-label="소논문"><span class="rail-ico" data-icon="file-text"></span><span class="rail-lab">소논문</span></button>
+    <button data-view="study" title="AI 연구" aria-label="AI 연구"><span class="rail-ico" data-icon="sparkles"></span><span class="rail-lab">AI 연구</span></button>
+  </div>
+  <div class="rail-foot">
+    <button data-view="settings" title="설정 (Ctrl+,)" aria-label="설정"><span class="rail-ico" data-icon="settings"></span><span class="rail-lab">설정</span></button>
+  </div>
+</nav>
 <main>
   <section id="view-bible">
     <div class="bar">
-      <select id="book"></select>
-      <select id="chap"></select>
-      <button id="prev">◀</button><button id="next">▶</button>
-      <details id="vers-box" class="versbox"><summary id="vers-sum">번역본</summary><div id="vers" class="vers"></div></details>
+      <div class="bar-left">
+        <select id="book" aria-label="책"></select>
+        <select id="chap" aria-label="장"></select>
+        <div class="seg-nav">
+          <button id="prev" class="icon-btn" title="이전 장" aria-label="이전 장"><span data-icon="chevron-left" data-size="16"></span></button>
+          <button id="next" class="icon-btn" title="다음 장" aria-label="다음 장"><span data-icon="chevron-right" data-size="16"></span></button>
+        </div>
+        <details id="vers-box" class="versbox"><summary id="vers-sum" class="btn-summary">번역본</summary><div id="vers" class="vers"></div></details>
+        <div class="goto-field"><span class="field-ico" data-icon="search" data-size="16"></span><input id="goto" type="text" placeholder="구절 이동  예: 행 24:10" aria-label="구절 이동"></div>
+      </div>
       <span class="spacer"></span>
-      <button id="cite" title="선택한 절과 출처를 복사합니다 (2,000자 제한)">인용 복사</button>
-    </div>
-    <div class="bar layout-bar">
-      <button id="add-panel" title="패널 추가">＋ 패널 추가</button>
-      <button id="layout-save" title="이름 붙여 배치 저장">배치 저장</button>
-      <button id="layout-load" title="저장한 배치 불러오기">배치 불러오기</button>
-      <button id="layout-default" title="기본 배치로">기본 배치로</button>
-      <button id="format-btn" title="글 서식">Aa 서식</button>
-      <span id="layout-name" class="muted"></span>
+      <div class="bar-right">
+        <details id="panel-wrap" class="menu-wrap">
+          <summary class="btn btn-quiet" title="패널 추가"><span data-icon="plus" data-size="16"></span>패널</summary>
+          <div id="panel-menu" class="menu" role="menu"></div>
+        </details>
+        <details id="layout-menu" class="menu-wrap">
+          <summary class="btn btn-quiet" title="배치"><span data-icon="layout" data-size="16"></span>배치<span class="sum-chev" data-icon="chevron-down" data-size="14"></span></summary>
+          <div class="menu" role="menu">
+            <button id="layout-save" type="button">배치 저장</button>
+            <button id="layout-load" type="button">배치 불러오기</button>
+            <button id="layout-default" type="button">기본 배치로</button>
+            <div id="layout-name" class="menu-note"></div>
+          </div>
+        </details>
+        <button id="cite" class="btn btn-quiet" title="선택한 절과 출처를 복사합니다 (2,000자 제한)"><span data-icon="copy" data-size="16"></span><span class="cite-lab">인용 복사</span></button>
+        <button id="format-btn" class="icon-btn" title="글 서식" aria-label="글 서식"><span class="fmt-aa" aria-hidden="true">Aa</span></button>
+      </div>
     </div>
     <div id="workspace"><div id="narrow-bar" class="narrow-bar" hidden></div><div id="panes"></div></div>
   </section>
+
   <section id="view-search" hidden>
     <div class="bar">
-      <div id="idxnote" class="muted" hidden></div><input id="q" placeholder="검색어 (구절 표기를 넣으면 그 자리로 이동)" size="40">
-      <select id="area"><option value="bible">성경 본문(고른 번역본)</option><option value="comm">주석</option></select>
-      <button id="dosearch">검색</button>
+      <div id="idxnote" class="muted" hidden></div>
+      <div class="search-field"><span class="field-ico" data-icon="search" data-size="16"></span><input id="q" type="text" placeholder="낱말이나 구절 (구절 표기는 그 자리로 이동)" aria-label="검색어"></div>
+      <select id="area" aria-label="검색 범위"><option value="bible">성경 본문(고른 번역본)</option><option value="comm">주석</option></select>
+      <button id="dosearch" class="btn btn-primary">검색</button>
     </div>
-    <div id="results" class="pane"></div>
+    <div id="results" class="pane results-pane"></div>
   </section>
+
   <section id="view-articles" hidden>
-    <div class="cols"><div id="articlelist" class="pane"></div><div id="articlebody" class="pane side"><p id="article-empty">왼쪽 목록에서 소논문을 누르면 본문이 나옵니다.</p></div></div>
-  </section>
-  <section id="view-sources" hidden>
-    <div class="pane">
-      <div id="updbox" class="bar"><span id="updver" class="muted"></span> <button id="updcheck">업데이트 확인</button> <button id="updgo" hidden>지금 다시 시작</button> <span id="updmsg" class="muted"></span> <details class="src-help"><summary>업데이트용 GitHub 주소</summary><div class="bar"><input id="updtoken" type="password" readonly autocomplete="off" name="theolib-update-address" placeholder="[편집]을 눌러 주소를 넣으세요" size="50"><button id="updedit">편집</button><button id="updtokensave">저장</button></div></details></div>
-      <div id="firstrun" class="note" hidden>처음 쓰시나요? 아래 <b>기본 자료 받기</b>로 저작권 자유 자료를 바로 받거나, <b>주소 넣기</b>로 받은 주소를 붙여 넣으세요.</div>
-      <div class="bar"><button id="freebtn">기본 자료 받기 (저작권 자유)</button> <button id="pickfiles">파일로 추가</button> <button id="pickfolder">폴더로 추가</button> <span class="muted">(파일·폴더를 이 창에 끌어다 놓아도 됩니다)</span></div>
-      <div id="freestatus" class="note" hidden><b id="freestatus-label">기본 자료(저작권 만료) 설치됨</b> <button id="free-reinstall">기본 자료 다시 설치</button></div>
-      <details class="src-help"><summary>기본 자료 저작권 안내</summary><p class="muted">개역한글 © 대한성서공회 1961 — 저작재산권 보호기간 만료(2011-12-31). 성명 표시 및 본문 동일성 유지. / KJV 1769 Public Domain (영국은 Crown copyright) / WEB · YLT · Darby · NHEB Public Domain / 원어사전 BDB·Thayer·Strong Public Domain</p></details>
-      <h3>자료 출처 추가 (주소 넣기)</h3>
-      <p class="muted">받은 주소 하나를 붙여 넣으세요. 주소는 운영체제 보안 저장소에만 보관되고 화면과 기록에 남기지 않습니다.</p>
-      <details class="src-help"><summary>주소 형식 보기</summary><p class="muted"><b>GitHub 주소</b>: <code>https://&lt;토큰&gt;@github.com/&lt;소유자&gt;/&lt;저장소&gt;</code> (공개 저장소는 토큰 없이 <code>https://github.com/&lt;소유자&gt;/&lt;저장소&gt;</code>). 릴리스 db 의 자료를 받습니다. 그 밖에는 <code>…/theolib.json</code> 주소를 넣습니다.</p></details>
-      <div class="bar"><input id="srcurl" type="password" readonly autocomplete="off" autocapitalize="off" spellcheck="false" name="theolib-source-address" placeholder="[편집]을 눌러 주소를 넣으세요" size="60"><button id="srcedit">편집</button><button id="srcshow" title="주소 보기">보기</button><button id="srccheck">확인</button></div>
-      <div id="srcpreview"></div>
-      <div id="gotbox"></div>
-      <div id="itemsbox"></div>
-      <h3>설치된 출처</h3>
-      <div id="srclist"></div>
-      <div id="progress" hidden><div class="barfill"><div id="fill"></div></div><span id="ptext"></span> <button id="cancel">취소</button><div id="pitems" class="muted"></div></div>
-      <div id="srcmsg" class="muted"></div>
+    <div class="bar bar-articles">
+      <div class="search-field search-field-sm"><span class="field-ico" data-icon="search" data-size="16"></span><input id="article-filter" type="text" placeholder="목록 거르기" aria-label="소논문 목록 거르기"></div>
     </div>
+    <div class="cols">
+      <div id="articlelist" class="list-pane"></div>
+      <div id="articlebody" class="read-pane"><p id="article-empty">왼쪽 목록에서 소논문을 누르면 본문이 나옵니다.</p></div>
+    </div>
+  </section>
+
+  <section id="view-settings" hidden>
+    <div class="set-wrap">
+      <nav class="set-nav" id="set-nav" aria-label="설정 갈래">
+        <button type="button" data-tab="account"><span class="set-nav-ico" data-icon="log-in" data-size="16"></span>계정</button>
+        <button type="button" data-tab="ai"><span class="set-nav-ico" data-icon="sparkles" data-size="16"></span>AI 연결</button>
+        <button type="button" data-tab="data"><span class="set-nav-ico" data-icon="database" data-size="16"></span>자료</button>
+        <button type="button" data-tab="format"><span class="set-nav-ico" data-icon="type" data-size="16"></span>서식</button>
+        <button type="button" data-tab="about"><span class="set-nav-ico" data-icon="settings" data-size="16"></span>앱 정보</button>
+      </nav>
+      <div class="set-scroll" id="set-scroll">
+        <div class="set-pane" data-pane="account"></div>
+        <div class="set-pane" data-pane="ai"></div>
+
+        <div class="set-pane" data-pane="data" hidden>
+          <h1 class="set-h1">자료</h1>
+          <div id="firstrun" class="callout" hidden>처음 쓰시나요? 아래 <b>기본 자료 받기</b>로 저작권 자유 자료를 바로 받거나, <b>서재 자료 받기</b>로 계정에 열린 자료를 받으세요.</div>
+
+          <section class="card">
+            <h2 class="card-title">기본 자료 (저작권 자유)</h2>
+            <p class="card-desc">개역한글·KJV·WEB·YLT·Darby·NHEB, KJV 원어 번호, 원어 사전이 앱에 들어 있습니다. 처음 켤 때 자동으로 설치됩니다.</p>
+            <div id="freestatus" class="row" hidden>
+              <b id="freestatus-label">기본 자료(저작권 만료) 설치됨</b>
+              <span class="spacer"></span>
+              <button id="free-reinstall" class="btn" type="button">다시 설치</button>
+            </div>
+            <div class="row">
+              <button id="freebtn" class="btn" type="button">기본 자료 받기 (저작권 자유)</button>
+            </div>
+            <details class="src-help"><summary class="disclosure">기본 자료 저작권 안내</summary><p class="muted note-line">개역한글 © 대한성서공회 1961 — 저작재산권 보호기간 만료(2011-12-31). 성명 표시 및 본문 동일성 유지. / KJV 1769 Public Domain (영국은 Crown copyright) / WEB · YLT · Darby · NHEB Public Domain / 원어사전 BDB·Thayer·Strong Public Domain</p></details>
+          </section>
+
+          <section class="card" id="appsrc-card">
+            <h2 class="card-title">서재 자료 받기</h2>
+            <div id="appsrc-body"></div>
+            <div id="itemsbox"></div>
+          </section>
+
+          <section class="card">
+            <h2 class="card-title">받은 자료</h2>
+            <p class="card-desc">이미 받아 둔 자료입니다. 칩을 누르면 아래 목록에서 그 자리로 갑니다.</p>
+            <div id="gotbox"></div>
+          </section>
+
+          <section class="card">
+            <h2 class="card-title">설치된 출처</h2>
+            <div id="srclist"></div>
+          </section>
+
+          <details class="card set-adv" id="src-adv">
+            <summary class="set-adv-sum">주소·파일로 직접 더하기 <span class="muted">(고급)</span></summary>
+            <div class="set-adv-body">
+              <p class="card-desc">받은 주소 하나를 붙여 넣으세요. 주소는 운영체제 보안 저장소에만 보관되고 화면과 기록에 남기지 않습니다.</p>
+              <div class="row">
+                <input id="srcurl" type="password" class="grow" placeholder="https://…@github.com/소유자/저장소 또는 …/theolib.json">
+                <button id="srcshow" class="btn" type="button">보기</button>
+                <button id="srccheck" class="btn btn-primary" type="button">확인</button>
+              </div>
+              <details class="src-help"><summary class="disclosure">주소 형식 보기</summary><p class="muted note-line"><b>GitHub 주소</b>: <code>https://&lt;토큰&gt;@github.com/&lt;소유자&gt;/&lt;저장소&gt;</code> (공개 저장소는 토큰 없이 <code>https://github.com/&lt;소유자&gt;/&lt;저장소&gt;</code>). 릴리스 db 의 자료를 받습니다. 그 밖에는 <code>…/theolib.json</code> 주소를 넣습니다.</p></details>
+              <div class="row drop-row">
+                <button id="pickfiles" class="btn" type="button">파일로 추가</button>
+                <button id="pickfolder" class="btn" type="button">폴더로 추가</button>
+                <div class="drop-hint">파일·폴더를 이 창에 끌어다 놓아도 됩니다</div>
+              </div>
+              <div id="srcpreview"></div>
+            </div>
+          </details>
+
+          <div id="srcmsg" class="muted note-line"></div>
+        </div>
+
+        <div class="set-pane" data-pane="format" hidden>
+          <h1 class="set-h1">서식</h1>
+          <p class="set-lead">성경 본문과 주석에 쓰는 글꼴·크기·줄 간격입니다. 값을 바꾸면 아래 미리 보기와 성경 보기에 바로 반영됩니다.</p>
+          <div class="card set-preview">
+            <div class="set-preview-h">미리 보기 <span class="muted">요한복음 3:16 · 개역한글</span></div>
+            <div class="fmt-body set-prev-body"><div class="vrow"><span class="n">16</span><span class="t">하나님이 세상을 이처럼 사랑하사 독생자를 주셨으니 이는 저를 믿는 자마다 멸망치 않고 영생을 얻게 하려 하심이니라</span></div></div>
+            <div class="fmt-note set-prev-note"><div class="note"><div>“독생자”는 유일하게 태어나신 아들이라는 뜻으로, 사랑의 크기가 그 아들을 내어 주신 데까지 이르렀음을 보여 줍니다.</div></div></div>
+          </div>
+          <div id="settings-format" class="set-format"></div>
+        </div>
+
+        <div class="set-pane" data-pane="about" hidden>
+          <h1 class="set-h1">앱 정보</h1>
+          <section class="card">
+            <h2 class="card-title">프로그램</h2>
+            <div id="appinfo" class="card-body"></div>
+          </section>
+          <section class="card">
+            <h2 class="card-title">업데이트</h2>
+            <div id="updbox" class="card-body">
+              <div class="row">
+                <span id="updver" class="muted"></span>
+                <span class="spacer"></span>
+                <button id="updcheck" class="btn" type="button">업데이트 확인</button>
+                <button id="updgo" class="btn btn-primary" type="button" hidden>지금 다시 시작</button>
+              </div>
+              <p id="updmsg" class="muted note-line"></p>
+              <details class="src-help" id="updtokfold"><summary class="disclosure">업데이트용 GitHub 주소</summary><div class="row"><input id="updtoken" type="password" placeholder="https://…@github.com/소유자/저장소 (비워 두면 자료 출처의 주소를 씁니다)"><button id="updtokensave" class="btn" type="button">저장</button></div></details>
+            </div>
+          </section>
+          <details class="card src-help"><summary class="disclosure">글꼴·아이콘 라이선스</summary><p class="muted note-line">나눔글꼴 © NAVER (SIL OFL) · 서울서체 © 서울특별시 (공공누리 제1유형) · 아이콘은 Lucide(ISC)를 따랐습니다(ui/icons-LICENSE.txt).</p></details>
+        </div>
+      </div>
+    </div>
+    <div id="progress" hidden>
+      <div class="prog-line"><div class="barfill"><div id="fill"></div></div><span id="ptext"></span><button id="cancel" class="btn btn-quiet" type="button">취소</button></div>
+      <div id="pitems" class="muted"></div>
+    </div>
+  </section>
+
+  <section id="view-study" hidden>
+    <div class="bar sbar">
+      <button type="button" class="btn btn-quiet" id="sback" hidden><span data-icon="chevron-left" data-size="16"></span>AI 본문 연구</button>
+      <span class="sbar-title" id="sbar-title">AI 본문 연구</span>
+      <span class="spacer"></span>
+    </div>
+    <div class="sbody" id="sbody"></div>
   </section>
 </main>
+<script src="icons.js"></script>
 <script src="dev-mock.js"></script>
 <script src="format.js"></script>
 <script src="layout.js"></script>
+<script src="settings.js"></script>
 <script src="app.js"></script>
+<script src="study.js"></script>
 </body>
 </html>

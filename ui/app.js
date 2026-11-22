@@ -5,6 +5,8 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// 아이콘(icons.js). 없으면 빈 문자열이라 화면이 깨지지 않는다.
+const ic = (n, s) => (window.Icon ? window.Icon(n, s) : '');
 
 const state = {
   books: [], versions: [], vers: [], bk: 44, ch: 1,
@@ -32,22 +34,39 @@ function restoreView() {
   state.ch = Math.max(1, ch);
   if (Array.isArray(lv.vers)) state.vers = lv.vers.filter((id) => state.versions.some((v) => v.id === id));
   if (lv.curVerse != null) state.curVerse = lv.curVerse;
-  if (lv.view && ['bible', 'search', 'articles', 'sources'].includes(lv.view)) state.view = lv.view;
+  if (lv.view && ['bible', 'search', 'articles', 'settings', 'sources'].includes(lv.view)) state.view = lv.view === 'sources' ? 'settings' : lv.view;
 }
 const fmtB = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.ceil(n / 1024) + ' KB');
+// 날짜 표시: ISO·'YYYY-MM-DD HH:MM' 을 '2026-11-21 22:11' 꼴로 다듬는다.
+function fmtWhen(s) {
+  const t = String(s || '').trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (m) return m[4] ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : `${m[1]}-${m[2]}-${m[3]}`;
+  return t;
+}
 const bookName = (n) => (state.books.find((b) => b.n === n) || {}).name || n;
 
 // ============================================================ 탭 전환
-document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => showView(b.dataset.view)));
-function showView(v) {
-  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
+document.querySelectorAll('#tabs button[data-view]').forEach((b) => (b.onclick = () => showView(b.dataset.view)));
+// 화면 전환. v='sources' 는 예전 이름이라 설정의 자료 갈래로 잇는다.
+// 두 번째 인자(tab)로 설정의 특정 갈래를 바로 열 수 있다.
+function showView(v, tab) {
+  if (v === 'sources') { showView('settings', 'data'); return; }
+  document.querySelectorAll('#tabs button[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === v));
   document.querySelectorAll('main > section').forEach((s) => (s.hidden = s.id !== 'view-' + v));
   state.view = v;
-  if (v === 'sources') loadSources();
+  if (v === 'settings') {
+    // 설정은 자기 갈래를 스스로 고르고 그린다(자료 갈래는 Settings 가 loadSources 를 부른다).
+    if (window.Settings) Settings.show(tab);
+  }
+  if (v === 'study' && window.Study) Study.show();
   if (v === 'articles') loadArticles();
-  if (v === 'search') idxNote();
+  if (v === 'search') { idxNote(); if (!$('#results').firstChild) renderSearchEmpty(); }
   saveView();
 }
+// 다른 파일(settings.js·study.js)이 화면을 열고 갈래로 갈 수 있게 내놓는다.
+window.AppShowView = showView;
 
 // ============================================================ 자료 출처 (다른 작업자가 고침 — 그대로 둠)
 const FILENAMES = { 'bible-ko': '한국어 성경 번역본', 'bible-en': '영어 성경 번역본', 'bible-etc': '그 밖의 번역본(원어 본문 등)', orig: '원어 번호 본문·원전 분해·원어 사전 2종', comm: '주석 6종·소논문' };
@@ -57,6 +76,8 @@ async function loadSources() {
   box.innerHTML = list.length ? '' : '<p class="muted">설치된 출처가 없습니다.</p>';
   $('#firstrun').hidden = list.length > 0;
   // 받은 자료 요약 카드에 쓸 최신 상태(항목 + 마지막 갱신 시각)
+  // bundle = 묶음(선언 파일)으로 설치된 파일 수. 항목 0건이어도 묶음이 있으면 카드 문구를 바꿔 쓴다.
+  itemState.bundle = list.reduce((a, s) => a + ((s.installed || []).length), 0);
   if (list.length) {
     itemState.received = { items: list[0].items || [], updated: (list[0].decl && list[0].decl.updated) || '' };
   } else {
@@ -69,34 +90,39 @@ async function loadSources() {
     const fsbox = $('#freestatus');
     fsbox.hidden = !fs.installed;
     if (fs.installed) $('#freestatus-label').textContent = '기본 자료(저작권 만료) 설치됨';
+    // 이미 설치돼 있으면 [기본 자료 받기] 단추(와 그 줄)를 숨긴다.
+    const freeBtn = $('#freebtn');
+    if (freeBtn) {
+      const freeRow = freeBtn.closest('.row');
+      if (freeRow) freeRow.hidden = !!fs.installed; else freeBtn.hidden = !!fs.installed;
+    }
   } catch (_) { $('#freestatus').hidden = true; }
   for (const s of list) {
     const d = document.createElement('div');
-    d.className = 'note';
+    d.className = 'src-row';
     const total = s.decl.files.filter((f) => s.installed.includes(f.id)).reduce((a, f) => a + f.db_bytes, 0) + (s.items || []).reduce((a, r) => a + r.db_bytes, 0);
     const ni = (s.items || []).length;
-    d.innerHTML = `<b>${esc((s.sources || []).map((x) => x.origin || x.title || '자료 출처').join(' + ') || s.origin || '자료 출처')}</b><div class="muted">${ni ? `받은 항목 ${ni}개` : `받은 파일: ${esc(s.installed.map((i) => FILENAMES[i] || i).join(', '))}`} · 푼 크기 ${fmtB(total)}</div><div class="muted">${esc(s.decl.updated)} ${esc(s.decl.note)}</div>`;
+    const name = (s.sources || []).map((x) => x.origin || x.title || '자료 출처').join(' + ') || s.origin || '자료 출처';
+    const chips = (s.installed || []).map((i) => `<span class="chip chip-sm">${esc(FILENAMES[i] || i)}</span>`).join('') +
+      (ni ? `<span class="chip chip-sm">받은 항목 ${ni}개</span>` : '');
+    const when = fmtWhen(s.decl.updated);
+    const facts = ['푼 크기 ' + fmtB(total), when ? '받은 날짜 ' + when : ''].filter(Boolean).join(' · ');
+    d.innerHTML = `<div class="src-main"><div class="src-name">${esc(name)}</div><div class="src-meta">${chips}<span class="src-facts">${esc(facts)}</span></div></div>`;
+    const acts = document.createElement('div');
+    acts.className = 'src-acts';
     const sync = Object.assign(document.createElement('button'), { textContent: '갱신 확인' });
+    sync.type = 'button'; sync.className = 'btn';
     const rm = Object.assign(document.createElement('button'), { textContent: '삭제' });
+    rm.type = 'button'; rm.className = 'btn btn-danger';
     sync.onclick = async () => run(async () => { $('#progress').hidden = false; const u = await invoke('sync_source'); msg(u.length ? '갱신: ' + u.join(', ') : '바뀐 파일이 없습니다.'); await boot(); });
     rm.onclick = async () => { if (!confirm('이 출처의 받은 자료와 검색 색인을 모두 지웁니다. 계속할까요?')) return; await run(async () => { await invoke('remove_source'); msg('지웠습니다.'); await boot(); loadSources(); }); };
-    d.append(sync, ' ', rm);
+    acts.append(sync, rm);
+    d.append(acts);
     box.append(d);
   }
 }
-const msg = (t, err) => { const m = $('#srcmsg'); m.textContent = t; m.className = err ? 'err' : 'muted'; };
+const msg = (t, err) => { const m = $('#srcmsg'); if (!m) return; m.textContent = t; m.className = err ? 'err' : 'muted'; };
 async function run(f) { try { await f(); } catch (x) { msg(String(x), true); } finally { $('#progress').hidden = true; } }
-// 주소 칸은 잠가 두고 [편집]을 눌렀을 때만 고칠 수 있게 한다(브라우저 비밀번호 자동 채움 사고 방지).
-function lockUrlInput(on) {
-  const i = $('#srcurl');
-  i.readOnly = on;
-  $('#srcedit').textContent = on ? '편집' : '잠금';
-  if (!on) { i.focus(); }
-}
-$('#srcedit').onclick = () => lockUrlInput(!$('#srcurl').readOnly);
-$('#updedit').onclick = () => { const i = $('#updtoken'); i.readOnly = !i.readOnly; $('#updedit').textContent = i.readOnly ? '편집' : '잠금'; if (!i.readOnly) i.focus(); };
-$('#updtoken').addEventListener('blur', () => { $('#updtoken').readOnly = true; $('#updedit').textContent = '편집'; });
-lockUrlInput(true);
 $('#srcshow').onclick = () => { const i = $('#srcurl'); i.type = i.type === 'password' ? 'text' : 'password'; };
 const KIND = { bible: '번역본', code: '원어 번호 본문', lex: '사전', comm: '주석' };
 
@@ -124,7 +150,7 @@ function itemHiddenKey(f) {
   return null;
 }
 const DEFAULT_NAMES = ['개역개정', '개역한글', '새번역', 'ESV', 'NIV2011', 'KJV1769'];
-const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [], filter: 'all', collapsed: {}, expanded: {}, focusKind: null, focusGroup: null, anchorId: null, received: { items: [], updated: '' } };
+const itemState = { url: null, files: [], sel: new Set(), sort: 'default', dir: 1, q: '', installed: [], filter: 'all', collapsed: {}, expanded: {}, focusKind: null, focusGroup: null, anchorId: null, received: { items: [], updated: '' }, bundle: 0 };
 async function previewUrl(url) {
   msg('선언 파일을 확인하는 중…');
   let d;
@@ -158,6 +184,17 @@ async function previewUrl(url) {
   p.append(go);
 }
 $('#srccheck').onclick = () => run(async () => { const url = $('#srcurl').value.trim(); if (url) await previewUrl(url); });
+// 설정 화면(settings.js)이 같은 자료 흐름을 그대로 쓰도록 내놓는다.
+// 주소는 화면·입력간에 남기지 않고 변수로만 넘긴다.
+window.AppPreviewUrl = previewUrl;
+window.AppLoadSources = loadSources;
+// 설정 화면에서 서재 자료 목록을 불렀을 때 묶음을 모두 펼쳐 두면 목록이 바로 보인다.
+window.AppExpandItems = () => {
+  if (!itemState.files || !itemState.files.length) return;
+  itemState.expanded = {};
+  for (const g of GROUPS) itemState.expanded[groupExpandKey(g.key)] = true;
+  drawItems();
+};
 $('#freebtn').onclick = () => run(async () => { state.freeUrl = await invoke('free_url'); await previewUrl(state.freeUrl); });
 $('#free-reinstall').onclick = () => run(async () => {
   $('#progress').hidden = false;
@@ -318,7 +355,7 @@ function tileHtml(f, inSeries) {
     : '';
   const grp = f.kind === 'bible' && !grpSel ? `<span class="it-grp muted">${esc(f.grp)}</span>` : '';
   return `<button type="button" class="it-tile${on ? ' on' : ''}${hid ? ' hidden' : ''}" data-id="${esc(f.id)}" data-kind="${esc(f.kind)}">
-    <span class="it-tile-top"><span class="it-name">${esc(inSeries ? f.book : f.name)}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '👁 보임' : '👁 숨김'}</span>` : ''}</span>
+    <span class="it-tile-top"><span class="it-name">${esc(inSeries ? f.book : f.name)}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '보이기' : '숨기기'}</span>` : ''}</span>
     <span class="it-tile-meta">${grpSel}${grp}${stTxt ? `<span class="it-status ${stCls}">${stTxt}</span>` : ''}<span class="it-bytes muted">${fmtB(f.bytes)}</span></span>
     ${f.license ? `<span class="it-license muted">${esc(f.license)}</span>` : ''}
     <span class="it-progress"></span>
@@ -347,7 +384,7 @@ function seriesHtml(sid, vis) {
   const tileOn = allSelected(ids);
   const total = head.series_bytes != null ? head.series_bytes : all.reduce((a, f) => a + f.bytes, 0);
   let h = `<button type="button" class="it-tile it-series${tileOn ? ' on' : ''}${hid ? ' hidden' : ''}" data-id="series:${esc(sid)}" data-kind="comm">
-    <span class="it-tile-top"><span class="it-name">${esc(name)}</span><span class="it-sexp" role="button" data-sid="${esc(sid)}" title="책별로 펼치기·접기">${open ? '▾ 책 접기' : '▸ 책 고르기'}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '👁 보임' : '👁 숨김'}</span>` : ''}</span>
+    <span class="it-tile-top"><span class="it-name">${esc(name)}</span><span class="it-sexp" role="button" data-sid="${esc(sid)}" title="책별로 펼치기·접기">${open ? ic('chevron-down', 12) + ' 책 접기' : ic('chevron-right', 12) + ' 책 고르기'}</span>${key ? `<span class="it-hide" role="button" data-key="${esc(key)}" data-on="${hid ? 0 : 1}" title="${hid ? '화면에 다시 보이기' : '화면에서만 숨기기 (지우지 않음)'}">${hid ? '보이기' : '숨기기'}</span>` : ''}</span>
     <span class="it-tile-meta">${all.length}/66책 · 고른 ${nOn}책<span class="it-bytes muted">${fmtB(onBytes)} / ${fmtB(total)}</span>${stTxt ? `<span class="it-status ${stCls}">${stTxt}</span>` : ''}</span>
     <span class="it-progress"></span>
   </button>`;
@@ -398,7 +435,7 @@ function groupHtml(g, expanded) {
   return `<div class="it-group" data-kind="${esc(g.key)}" data-gkey="${esc(g.key)}">
     <div class="it-group-head" tabindex="0">
       <button type="button" class="it-cbox ${st.tick}" data-gkey="${esc(g.key)}" title="이 묶음 전체를 고르거나 해제"></button>
-      <button type="button" class="it-row-exp" data-gkey="${esc(g.key)}" aria-expanded="${expanded}" title="펼치기·접기">${expanded ? '▾' : '▸'}</button>
+      <button type="button" class="it-row-exp" data-gkey="${esc(g.key)}" aria-expanded="${expanded}" title="펼치기·접기">${expanded ? ic('chevron-down', 14) : ic('chevron-right', 14)}</button>
       <span class="it-row-name">${esc(g.label)}</span>
       <span class="it-group-count muted">${st.n}${st.unit}</span>
       <span class="it-row-meta muted">고른 ${st.nOn}/${st.total} · 고른 용량 ${fmtB(st.selBytes)} · 받음 ${st.have}${st.haveUnit}</span>
@@ -453,24 +490,27 @@ function renderGotCard() {
   const items = rec.items || [];
   const totalBytes = items.reduce((a, i) => a + (i.db_bytes || i.bytes), 0);
   const chips = buildGotChips(items);
+  // 항목으로 받은 것이 0건이고 묶음 설치만 있으면 건수·크기 대신 묶음 안내를 보여 준다.
+  const bundledOnly = !chips.length && (itemState.bundle || 0) > 0;
   const chipsHtml = !chips.length
-    ? '<p class="got-empty">아직 받은 자료가 없습니다 — 기본 자료는 앱에 들어 있어 바로 읽을 수 있습니다</p>'
+    ? (bundledOnly
+      ? `<p class="got-empty">묶음으로 받은 자료가 설치되어 있습니다. 아래 '설치된 출처'에서 볼 수 있습니다.</p>`
+      : '<p class="got-empty">아직 받은 자료가 없습니다 — 기본 자료는 앱에 들어 있어 바로 읽을 수 있습니다</p>')
     : `<div class="got-chips">${chips.map((c) => {
         const st = gotStatus(c.ids);
         return `<span class="got-chip" data-gotkey="${esc(c.key)}" data-ids="${esc(c.ids.join(','))}" role="button" tabindex="0" title="누르면 목록에서 그 자리로 이동">
           <span class="got-chip-name">${esc(c.label)}</span>
           <span class="got-chip-meta muted">${fmtB(c.bytes)}</span>
           <span class="it-status ${st === '최신' ? 'st-have' : 'st-new'}">${st}</span>
-          <span class="got-chip-x" data-gotdel="${esc(c.key)}" role="button" title="이 항목만 지우기">✕</span>
+          <span class="got-chip-x" data-gotdel="${esc(c.key)}" role="button" title="이 항목만 지우기">${ic('x', 12)}</span>
         </span>`;
       }).join('')}</div>`;
   const toggle = [['all', '전체'], ['have', '받은 것'], ['none', '안 받은 것']].map(([k, lab]) =>
     `<button type="button" class="it-fbtn${itemState.filter === k ? ' on' : ''}" data-filter="${k}">${lab}</button>`).join('');
   box.innerHTML = `<div class="got-card">
     <div class="got-head">
-      <b class="got-title">받은 자료</b>
-      <span class="got-count muted">${chips.length}건 · ${fmtB(totalBytes)}</span>
-      ${rec.updated ? `<span class="got-updated muted">마지막 갱신 ${esc(rec.updated)}</span>` : ''}
+      <span class="got-count muted"${bundledOnly ? ' hidden' : ''}>${chips.length}건 · ${fmtB(totalBytes)}</span>
+      ${rec.updated ? `<span class="got-updated muted">마지막 갱신 ${esc(fmtWhen(rec.updated))}</span>` : ''}
       <span class="spacer"></span>
       <span class="got-toggle">${toggle}</span>
     </div>
@@ -483,6 +523,7 @@ function renderGotCard() {
 async function refreshReceived() {
   const src = await invoke('sources');
   itemState.installed = src.length ? src[0].items || [] : [];
+  itemState.bundle = src.reduce((a, s) => a + ((s.installed || []).length), 0);
   itemState.received = { items: itemState.installed, updated: (src.length && src[0].decl && src[0].decl.updated) || '' };
   renderGotCard();
   if (itemState.files && itemState.files.length) drawItems();
@@ -738,7 +779,7 @@ async function boot() {
   const list = await invoke('sources');
   const inst = list.length ? list[0].installed : [];
   const has = inst.some((i) => i.startsWith('bible') || i.startsWith('orig'));
-  if (!has) { state.versions = []; $('#vers').innerHTML = ''; $('#panes').innerHTML = '<p class="muted" style="padding:12px 16px">성경 자료가 없습니다. 「자료 출처」에서 주소를 넣고 받으세요.</p>'; showView('sources'); return; }
+  if (!has) { state.versions = []; $('#vers').innerHTML = ''; $('#panes').innerHTML = '<p class="muted" style="padding:12px 16px">성경 자료가 없습니다. 「설정 > 자료」에서 기본 자료를 받으세요.</p>'; showView('sources'); return; }
   await syncHidden();
   state.books = await invoke('books');
   state.versions = (await invoke('versions')).filter((v) => v.kind !== 'parse' && !isHidden('v:' + v.id));
@@ -835,8 +876,8 @@ function userMap(d) {
 // 절 번호 옆에 붙는 작은 표식(책갈피·메모).
 function userMarksHtml(um, v) {
   let h = '';
-  if (um.bm[v]) h += `<span class="umark bm" data-v="${v}" title="책갈피">🔖</span>`;
-  if (um.mm[v]) h += `<span class="umark mm" data-v="${v}" title="메모">📝</span>`;
+  if (um.bm[v]) h += `<span class="umark bm" data-v="${v}" title="책갈피">${ic('bookmark', 12)}</span>`;
+  if (um.mm[v]) h += `<span class="umark mm" data-v="${v}" title="메모">${ic('pencil', 12)}</span>`;
   return h;
 }
 
@@ -869,6 +910,7 @@ function renderBody(panel) {
         `<div class="t">${r.texts.map((t) => `<span class="tline">${vers.length > 1 ? `<span class="vn">${esc(VNAME()[t.ver] || t.ver)}</span>` : ''}${t.html}</span>`).join('')}</div></div>`;
     }).join('') || '<p class="muted">이 장의 본문이 없습니다.</p>';
     el.innerHTML = toggle + content;
+    if (window.Layout) Layout.refreshPanelMeta(panel.id);
     bindVerseMenu(el, panel, ref);
     bindMemoMarkers(el, ref);
     const vl = el.querySelector('.vers-layout');
@@ -1099,6 +1141,8 @@ function noteRange(n) {
   const ek = Number.isFinite(n.end_key) ? n.end_key : sk;
   const c1 = Math.floor(sk / 1000), v1 = sk % 1000;
   const c2 = Math.floor(ek / 1000), v2 = ek % 1000;
+  // 장이 0 인 풀이(책 서론·개관)는 '0장' 대신 '개관'으로 쓴다(절 범위가 있으면 그대로).
+  if (!c1 && !c2 && !v1 && !v2) return '개관';
   if (sk === ek) return v1 ? `${c1}:${v1}` : `${c1}장`;
   if (!v1 && v2 === 999) return `${c1}장 전체`;
   const head = v1 ? `${c1}:${v1}` : `${c1}장`;
@@ -1178,7 +1222,9 @@ function renderComm(panel) {
     const tabs = comms.map((c) => `<button class="${!multi && c === cur ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('') +
       (whole && comms.length > 1 ? `<button class="${multi ? 'on' : ''}" data-multi="1" title="모든 주석을 절 순서대로 이어서 보기">이어 보기</button>` : '');
     const cvBtn = (m, label) => `<button data-cv="${m}" class="${(whole ? m === 'chap' : m === 'verse') ? 'on' : ''}">${label}</button>`;
-    const top = `<div class="comm-top"><div class="subtabs">${tabs}</div><div class="cv">${cvBtn('verse', '절')}${cvBtn('chap', '장 전체')}</div></div>`;
+    const top = comms.length
+      ? `<div class="comm-top"><div class="subtabs">${tabs}</div><div class="cv">${cvBtn('verse', '절')}${cvBtn('chap', '장 전체')}</div></div>`
+      : '';
     let body = '';
     if (whole) {
       // 장 전체를 절 순서대로 그대로 다 보여준다(접지 않는다). 여러 시리즈면 시리즈마다 이어서.
@@ -1197,7 +1243,8 @@ function renderComm(panel) {
     }
     if (!body) body = '<p class="muted">이 장의 주석이 없습니다.</p>';
     el.innerHTML = `<div class="comm-wrap">${top}<div class="notes${whole ? ' comm-list' : ''}">${body}</div></div>`;
-    el.querySelector('.comm-top').onclick = (ev) => {
+    const top0 = el.querySelector('.comm-top');
+    if (top0) top0.onclick = (ev) => {
       const b = ev.target.closest('button');
       if (!b) return;
       if (b.dataset.cv) {
@@ -1263,6 +1310,31 @@ async function doSearchRaw(q) {
   return invoke('search_text', { q, area: 'bible', vers: state.vers });
 }
 
+// 소논문 본문: 글에 그대로 남은 `## 제목`·`### 제목` 줄을 소제목으로 그리고 머리의 # 을 뗀다.
+// 본문 html 은 줄바꿈을 <br> 로 가진 글이라(html::text_to_html) 줄 단위로 나눠 다시 만든다.
+function articleBodyHtml(html) {
+  const src = String(html || '');
+  if (!src) return src;
+  const segs = src.split(/<br\s*\/?>/i);
+  let out = '';
+  let buf = [];
+  const flush = () => {
+    if (buf.some((x) => x.trim())) out += '<p>' + buf.join('<br>') + '</p>';
+    buf = [];
+  };
+  for (const raw of segs) {
+    const line = raw.trim();
+    const m = line.match(/^(#{2,3})\s+(.+)$/);
+    if (m) {
+      flush();
+      const tag = m[1].length === 2 ? 'h3' : 'h4';
+      out += '<' + tag + ' class="art-h">' + m[2].trim() + '</' + tag + '>';
+    } else if (!line) flush();
+    else buf.push(raw.replace(/^\s+|\s+$/g, ''));
+  }
+  flush();
+  return out;
+}
 function renderArticlePanel(panel) {
   const el = panel.body;
   el.innerHTML = '<p class="muted">불러오는 중…</p>';
@@ -1274,7 +1346,7 @@ function renderArticlePanel(panel) {
 }
 async function openArticleBody(id, title, el, panel) {
   const body = await invoke('article_body', { id }).catch((x) => `<p class="err">${esc(x)}</p>`);
-  el.innerHTML = `<button class="p-btn" id="art-back" title="목록으로">◀ 목록</button><div id="article-title">${esc(title || '')}</div><div class="art-body fmt-body">${body}</div>`;
+  el.innerHTML = `<button class="btn btn-quiet" id="art-back" title="목록으로">${ic('chevron-left', 14)}목록</button><div id="article-title">${esc(title || '')}</div><div class="art-body fmt-body">${articleBodyHtml(body)}</div>`;
   const back = el.querySelector('#art-back');
   if (back && panel) back.onclick = () => renderArticlePanel(panel);
 }
@@ -1299,7 +1371,7 @@ async function renderRecords(panel) {
     el.querySelector('.rec-count').textContent = `${shown.length}건`;
     if (!shown.length) { list.innerHTML = '<p class="muted">기록이 없습니다.</p>'; return; }
     list.innerHTML = shown.map((r) => {
-      const icon = r.type === 'memo' ? '📝' : '🔖';
+      const icon = r.type === 'memo' ? ic('pencil', 14) : ic('bookmark', 14);
       return `<div class="rec-item" data-bk="${r.bk}" data-ch="${r.ch}" data-v="${r.v}">` +
         `<span class="rec-icon">${icon}</span><span class="rec-ref">${esc(ref(r))}</span><span class="rec-body">${esc(r.body || '')}</span></div>`;
     }).join('');
@@ -1421,28 +1493,33 @@ $('#prev').onclick = () => { if (state.ch > 1) { state.ch--; openChapter(false);
 $('#next').onclick = () => { const b = state.books.find((x) => x.n === state.bk); if (b && state.ch < b.ch) { state.ch++; openChapter(false); } };
 
 // ---- 배치/서식 툴바
+let lastName = '';
 function toolbarName() {
-  const names = Layout.layoutNames();
-  $('#layout-name').textContent = '';
+  const el = $('#layout-name');
+  if (!el) return;
+  el.textContent = lastName ? '지금 배치: ' + lastName : '저장하지 않은 배치';
 }
 
-// 패널 추가: 종류 고르는 간단한 prompt(목록)
-function choosePanelKind() {
-  const kinds = Object.keys(Layout.PANEL_META);
-  const names = kinds.map((k, i) => `${i + 1}. ${Layout.PANEL_META[k].name}`).join('\n');
-  const s = prompt('추가할 패널 종류(번호):\n' + names);
-  if (s == null) return null;
-  const n = parseInt(s, 10);
-  if (n >= 1 && n <= kinds.length) return kinds[n - 1];
-  // 한글 이름으로도 허용
-  const found = kinds.find((k) => Layout.PANEL_META[k].name === s.trim());
-  return found || null;
+// 패널 추가 메뉴(기준서 3.2): 종류를 작은 메뉴에서 고른다.
+function buildPanelMenu() {
+  const menu = $('#panel-menu');
+  if (!menu) return;
+  const KIND_ICON = { body: 'book-open', comm: 'file-text', parse: 'type', lex: 'book-open', search: 'search', article: 'file-text', records: 'bookmark' };
+  menu.innerHTML = '';
+  for (const [k, meta] of Object.entries(Layout.PANEL_META)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.kind = k;
+    b.innerHTML = `${ic(KIND_ICON[k] || 'plus', 16)}<span>${esc(meta.name)}</span>`;
+    b.onclick = () => {
+      Layout.addPanel(k);
+      toolbarName();
+      const w = $('#panel-wrap');
+      if (w) w.open = false;
+    };
+    menu.appendChild(b);
+  }
 }
-
-$('#add-panel').onclick = () => {
-  const kind = choosePanelKind();
-  if (kind) { Layout.addPanel(kind); toolbarName(); }
-};
 
 $('#layout-save').onclick = () => {
   const name = prompt('배치 이름:');
@@ -1451,6 +1528,7 @@ $('#layout-save').onclick = () => {
   const existing = Layout.layoutNames().includes(name);
   if (existing && !confirm(`"${name}" 배치를 덮어씁니다. 계속할까요?`)) return;
   Layout.saveLayout(name, root, true);
+  lastName = name;
   toolbarName();
 };
 
@@ -1462,7 +1540,7 @@ $('#layout-load').onclick = () => {
   const n = parseInt(s, 10);
   const name = (n >= 1 && n <= names.length) ? names[n - 1] : s.trim();
   const root = Layout.loadLayout(name, true);
-  if (root) { Layout.setRoot(root); toolbarName(); }
+  if (root) { Layout.setRoot(root); lastName = name; toolbarName(); }
 };
 
 $('#layout-default').onclick = () => {
@@ -1470,8 +1548,14 @@ $('#layout-default').onclick = () => {
   if (!s) return;
   const defs = Layout.defaults();
   const key = s.trim() === '1' ? '본문만' : s.trim() === '2' ? '본문+주석' : (s.trim() === '3' ? '본문·주석·원어' : s.trim());
-  if (defs[key]) { Layout.setRoot(defs[key].root); toolbarName(); }
+  if (defs[key]) { Layout.setRoot(defs[key].root); lastName = key; toolbarName(); }
 };
+
+// 메뉴 항목을 누르면 그 메뉴를 닫고, 바깥을 누르면 열린 메뉴를 모두 닫는다.
+document.querySelectorAll('#layout-menu .menu button').forEach((b) => b.addEventListener('click', () => { const d = $('#layout-menu'); if (d) d.open = false; }));
+document.addEventListener('pointerdown', (ev) => {
+  document.querySelectorAll('.menu-wrap[open]').forEach((d) => { if (!d.contains(ev.target)) d.open = false; });
+});
 
 // ---- 서식 UI (오른쪽 서랍)
 function buildFormatUI() {
@@ -1479,7 +1563,7 @@ function buildFormatUI() {
   host.id = 'format-pop';
   host.className = 'format-pop';
   host.hidden = true;
-  const ws = document.querySelector('#workspace') || document.body;
+  const ws = document.body;
   ws.appendChild(host);
   return host;
 }
@@ -1519,11 +1603,18 @@ function openPanelFormat(panel) {
   renderFormatHost();
 }
 
-function renderFormatHost() {
-  const isPanel = formatTarget !== 'all';
-  const panel = isPanel ? formatTarget : null;
+function renderFormatHost() { renderFormatInto(formatHost, formatTarget, { head: true }); }
+
+// 서식 그리는 일은 한 곳에 두고, 그리는 자리(host)만 인자로 받는다.
+// 설정의 서식 갈래는 window.FormatUI.render(요소) 로 같은 코드를 부른다(head 없이).
+function renderFormatInto(host, target, opts) {
+  opts = opts || {};
+  // 이 자리를 다시 그리는 함수(서랍이면 서랍, 설정 갈래면 설정 갈래)
+  const redraw = opts.redraw || renderFormatHost;
+  const isPanel = target !== 'all';
+  const panel = isPanel ? target : null;
   // 패널 서식: 폰트 크기 배율과 전체 따르기 여부. 전체 서식은 공통.
-  formatHost.innerHTML = `<div class="fp-head"><b>${isPanel ? (panel.name() + ' 서식') : '글 서식'}</b> <span class="fp-close" title="닫기">✕</span></div>`;
+  host.innerHTML = opts.head === false ? '' : `<div class="fp-head"><b>${isPanel ? (panel.name() + ' 서식') : '글 서식'}</b> <button type="button" class="fp-close" title="닫기" aria-label="닫기">${ic('x', 16)}</button></div>`;
   const body = document.createElement('div');
   body.className = 'fp-body';
 
@@ -1639,9 +1730,9 @@ function renderFormatHost() {
     common.querySelector('#fp-hl').oninput = (ev) => { Fmt.set({ searchHl: ev.target.value }); };
     common.querySelector('#fp-lb').onchange = (ev) => { Fmt.set({ lineBreak: ev.target.checked }); };
     common.querySelector('#fp-save').onclick = () => { const n = common.querySelector('#fp-preset-name').value.trim(); if (n) { Fmt.savePreset(n); refreshPreset(); } };
-    common.querySelector('#fp-load').onclick = () => { const n = common.querySelector('#fp-preset').value; if (n) { Fmt.loadPreset(n); renderFormatHost(); renderAll(); } };
+    common.querySelector('#fp-load').onclick = () => { const n = common.querySelector('#fp-preset').value; if (n) { Fmt.loadPreset(n); redraw(); renderAll(); } };
     common.querySelector('#fp-del').onclick = () => { const n = common.querySelector('#fp-preset').value; if (n && confirm(`"${n}" 묶음을 지웁니다.`)) { Fmt.deletePreset(n); refreshPreset(); } };
-    common.querySelector('#fp-default').onclick = () => { Fmt.resetToDefault(); renderFormatHost(); renderAll(); };
+    common.querySelector('#fp-default').onclick = () => { Fmt.resetToDefault(); redraw(); renderAll(); };
 
     showTarget('body');
   }
@@ -1652,10 +1743,21 @@ function renderFormatHost() {
   srcLine.textContent = '글꼴: 나눔글꼴(NAVER, SIL OFL) · 서울서체(서울특별시, 공공누리 제1유형)';
   body.appendChild(srcLine);
 
-  const head = formatHost.querySelector('.fp-head');
-  head.querySelector('.fp-close').onclick = () => { formatHost.hidden = true; };
-  head.parentNode.insertBefore(body, head.nextSibling);
+  const head = host.querySelector('.fp-head');
+  if (head) {
+    head.querySelector('.fp-close').onclick = () => { host.hidden = true; };
+    head.parentNode.insertBefore(body, head.nextSibling);
+  } else {
+    host.appendChild(body);
+  }
 }
+
+window.FormatUI = {
+  render(el) {
+    const again = () => renderFormatInto(el, 'all', { head: false, redraw: again });
+    again();
+  },
+};
 
 $('#format-btn').onclick = () => { if (formatHost && !formatHost.hidden) formatHost.hidden = true; else openFormat(); };
 Layout.setOpenPanelFormat(openPanelFormat);
@@ -1677,7 +1779,7 @@ window.addEventListener('keydown', (ev) => {
   else if (ev.key === '0') { ev.preventDefault(); Fmt.resetSize(activePanel()); }
 });
 
-// ---- 단축키: ⌘L 구절 이동, ⌘F 검색 탭, ⌘1~4 탭 전환, ←/→ 이전·다음 장
+// ---- 단축키: ⌘L 구절 이동, ⌘F 검색 탭, ⌘1~5 화면 전환, ⌘, 설정, ←/→ 이전·다음 장
 function editingFocus() {
   const a = document.activeElement;
   return a && (a.matches('input,textarea,select') || a.isContentEditable);
@@ -1688,9 +1790,11 @@ window.addEventListener('keydown', (ev) => {
     const k = ev.key.toLowerCase();
     if (k === 'l') { ev.preventDefault(); showView('bible'); $('#goto').focus(); $('#goto').select(); return; }
     if (k === 'f') { ev.preventDefault(); showView('search'); $('#q').focus(); $('#q').select(); return; }
-    if (/^[1-4]$/.test(ev.key)) {
+    // Ctrl+, : 설정 화면
+    if (ev.key === ',' || ev.code === 'Comma') { ev.preventDefault(); showView('settings'); return; }
+    if (/^[1-5]$/.test(ev.key)) {
       ev.preventDefault();
-      const v = { '1': 'bible', '2': 'search', '3': 'articles', '4': 'sources' }[ev.key];
+      const v = { '1': 'bible', '2': 'search', '3': 'articles', '4': 'settings', '5': 'study' }[ev.key];
       showView(v);
       return;
     }
@@ -1718,7 +1822,9 @@ $('#cite').onclick = async () => {
   const cite = `\n— ${bookName(state.bk)} ${state.ch}:${range} (${vname})`;
   if (text.length + cite.length > 2000) text = text.slice(0, 2000 - cite.length - 1) + '…';
   await navigator.clipboard.writeText(text + cite);
-  $('#cite').textContent = '복사했습니다'; setTimeout(() => ($('#cite').textContent = '인용 복사'), 1500);
+  const lab = $('#cite .cite-lab') || $('#cite');
+  lab.textContent = '복사했습니다';
+  setTimeout(() => (lab.textContent = '인용 복사'), 1500);
 };
 
 // ---- 구절 이동·검색
@@ -1728,7 +1834,7 @@ async function go(input) {
   if (!r) return false;
   [state.bk, state.ch] = r; showView('bible'); await openChapter(r[2] || null); return true;
 }
-$('#goto').addEventListener('keydown', async (ev) => { if (ev.key === 'Enter' && !(await go($('#goto').value))) $('#goto').style.borderColor = '#c0392b'; else $('#goto').style.borderColor = ''; });
+$('#goto').addEventListener('keydown', async (ev) => { if (ev.key === 'Enter' && !(await go($('#goto').value))) $('#goto').style.borderColor = 'var(--err)'; else $('#goto').style.borderColor = ''; });
 async function doSearch() {
   const q = $('#q').value.trim(); if (!q) return;
   if (await go(q)) return;
@@ -1762,6 +1868,12 @@ function bookSummary(hits) {
   }
   return [...m.entries()].sort((a, b) => b[1] - a[1]);
 }
+// 검색 처음 화면(빈 화면 규칙): 안내 한 문장 + 예시 칩 3개
+function renderSearchEmpty() {
+  const box = $('#results');
+  box.innerHTML = `<div class="empty"><span class="empty-ico">${ic('search', 32)}</span><p>낱말이나 구절을 넣어 찾아보세요</p><div class="empty-chips">${['은혜', '요 3:16', '하나님의 나라'].map((w) => `<button type="button" class="chip" data-eg="${esc(w)}">${esc(w)}</button>`).join('')}</div></div>`;
+  box.querySelectorAll('[data-eg]').forEach((b) => (b.onclick = () => { $('#q').value = b.dataset.eg; doSearch(); }));
+}
 function renderSearchHits(container, hits, q, area) {
   container.textContent = '';
   const vname = VNAME();
@@ -1770,10 +1882,9 @@ function renderSearchHits(container, hits, q, area) {
     return;
   }
   const summary = bookSummary(hits);
-  const bookBtns = `<button class="sr-filter on" data-filter="__all">전체 ${hits.length}</button>` +
-    summary.map(([name, n]) => `<button class="sr-filter" data-filter="${esc(name)}">${esc(name)} ${n}</button>`).join('');
-  container.innerHTML = `<div class="sr-summary mutable">${esc(summary.map(([name, n]) => `${name} ${n}건`).join(' · '))}</div>` +
-    `<div class="sr-filter-bar">${bookBtns}</div><div class="sr-list"></div>`;
+  const bookBtns = `<button class="chip sr-filter on" data-filter="__all">전체 <span class="n">${hits.length}</span></button>` +
+    summary.map(([name, n]) => `<button class="chip sr-filter" data-filter="${esc(name)}">${esc(name)}<span class="n">${n}</span></button>`).join('');
+  container.innerHTML = `<div class="sr-filter-bar">${bookBtns}</div><div class="sr-list"></div>`;
   const list = container.querySelector('.sr-list');
   const draw = (filter) => {
     const show = hits.filter((h) => filter === '__all' || (h.area === 'article' ? '소논문' : bookName(h.bk)) === filter);
@@ -1809,51 +1920,24 @@ let _articleSel = null;
 async function loadArticles() {
   _articles = await invoke('articles').catch(() => []);
   const listEl = $('#articlelist');
-  listEl.innerHTML = _articles.length ? _articles.map((a) => `<div class="hit" data-id="${a.id}" data-t="${esc(a.title)}" data-src="${esc(a.src_name)}" data-sec="${esc(a.section)}" data-chars="${a.chars}"><b>${esc(a.title)}</b> <span class="tag">${esc(a.src_name)}</span> <span class="muted">${esc(a.section)} · ${a.chars.toLocaleString()}자</span></div>`).join('') : '<p class="muted">소논문 자료가 없습니다. 「자료 출처」에서 주석·소논문 자료를 받으면 이곳에 목록이 나옵니다.</p>';
+  listEl.innerHTML = _articles.length ? _articles.map((a) => `<div class="hit" data-id="${a.id}" data-t="${esc(a.title)}" data-src="${esc(a.src_name)}" data-sec="${esc(a.section)}" data-chars="${a.chars}"><b>${esc(a.title)}</b> <span class="tag">${esc(a.src_name)}</span> <span class="muted">${esc(a.section)} · ${a.chars.toLocaleString()}자</span></div>`).join('') : '<p class="muted">소논문 자료가 없습니다. 「설정 > 자료」에서 주석·소논문 자료를 받으면 이곳에 목록이 나옵니다.</p>';
   listEl.querySelectorAll('.hit').forEach((h) => h.classList.toggle('sel', +h.dataset.id === _articleSel));
 }
 $('#articlelist').addEventListener('click', (ev) => { const d = ev.target.closest('.hit'); if (d) openArticle(+d.dataset.id, d.dataset.t, { src: d.dataset.src, sec: d.dataset.sec, chars: +d.dataset.chars }); });
+// 목록 거르기(화면에서만 걸러 낸다. 자료·저장은 그대로)
+$('#article-filter').addEventListener('input', (ev) => {
+  const q = ev.target.value.trim().toLowerCase();
+  document.querySelectorAll('#articlelist .hit').forEach((h) => { h.hidden = !!q && !h.textContent.toLowerCase().includes(q); });
+});
 async function openArticle(id, title, meta) {
   _articleSel = id;
   const listEl = $('#articlelist');
   listEl.querySelectorAll('.hit').forEach((h) => h.classList.toggle('sel', +h.dataset.id === id));
   const body = await invoke('article_body', { id }).catch((x) => `<p class="err">${esc(x)}</p>`);
   const metaHtml = meta ? `<div id="article-meta">${esc(meta.src || '')}${meta.sec ? ' · ' + esc(meta.sec) : ''}${meta.chars ? ' · ' + meta.chars.toLocaleString() + '자' : ''}</div>` : '';
-  $('#articlebody').innerHTML = `<div id="article-title">${esc(title || '')}</div>${metaHtml}<div class="art-body fmt-body">${body}</div>`;
+  $('#articlebody').innerHTML = `<div id="article-title">${esc(title || '')}</div>${metaHtml}<div class="art-body fmt-body">${articleBodyHtml(body)}</div>`;
 }
 
-
-// ---- 주석 패널의 '장 전체' 보기에만 쓰는 작은 스타일(화면 파일 하나로 끝내려고 여기서 넣는다)
-(function injectCommStyle() {
-  const st = document.createElement('style');
-  st.textContent = [
-    // 패널 본문(.p-body, overflow:auto)이 스크롤 컨테이너이므로 그 기준으로 상단에 붙인다.
-    // 위아래 여백을 본문 padding(8px 12px)만큼 음수로 당겨 스크롤한 내용이 옆·위로 비치지 않게 한다.
-    '.comm-top{position:sticky;top:-8px;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-8px -12px 6px;padding:8px 12px 6px;background:var(--bg);border-bottom:1px solid var(--line)}',
-    '.comm-top .subtabs{flex:1;margin:0}',
-    '.comm-top .cv{display:flex;flex:none}',
-    '.comm-top .cv button{font-size:12px;padding:1px 8px;border-radius:0}',
-    '.comm-top .cv button:first-child{border-radius:6px 0 0 6px}',
-    '.comm-top .cv button:last-child{border-radius:0 6px 6px 0;border-left:none}',
-    '.cnote{scroll-margin-top:46px;padding-left:8px;border-left:3px solid transparent}',
-    '.cr{display:inline-block;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:600;color:var(--acc);border:1px solid var(--line);border-radius:4px;padding:0 6px;margin-right:7px;background:var(--bg)}',
-    '.cnote .cr{color:var(--acc)}',
-    '.cnote.hl{border-left:3px solid var(--acc);background:var(--sel);transition:background .3s,border-color .3s}',
-    '.csec{font-weight:600;color:var(--acc);margin:10px 0 2px;padding-top:6px;border-top:1px solid var(--line)}',
-    // 절 모드: 선택 절의 대표 항목은 왼쪽 색 띠 + 살짝 배경, 접힌 묶음은 한 줄 요약처럼
-    '.note.current{border-left:3px solid var(--acc);padding-left:10px;background:var(--sel);border-radius:0 6px 6px 0;margin-left:-3px}',
-    '.note.current .cr{font-weight:700}',
-    'details.note-more{display:flex;flex-direction:column;border-top:1px solid var(--line);padding:4px 0;margin-top:2px}',
-    'details.note-more>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}',
-    'details.note-more>summary::-webkit-details-marker{display:none}',
-    'details.note-more>summary::before{content:"▸";font-size:12px;color:var(--acc);flex:none}',
-    'details.note-more[open]>summary::before{content:"▾"}',
-    'details.note-more>summary .mo{color:var(--acc);font-weight:600}',
-    'details.note-more>summary .mo-sub{color:var(--mut);font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}',
-    'details.note-more .note{margin-left:6px}',
-  ].join('\n');
-  document.head.appendChild(st);
-})();
 
 // ---- 초기화
 attachPanelEvents();
@@ -1865,6 +1949,7 @@ Layout.init(document.querySelector('#panes'), {
 });
 Fmt.apply();
 toolbarName();
+buildPanelMenu();
 boot();
 
 
@@ -1872,6 +1957,17 @@ boot();
 function updRender(st) {
   if (!st) return;
   $('#updver').textContent = '지금 버전 v' + st.current;
+  if (st.portable) {
+    $('#updcheck').hidden = true;
+    $('#updgo').hidden = true;
+    // 포터블판은 업데이트를 하지 않으므로 GitHub 주소 접이도 숨긴다.
+    const fold = $('#updtokfold');
+    if (fold) fold.hidden = true;
+    $('#updmsg').textContent = '포터블판은 자동 업데이트를 하지 않습니다. 새 판은 받은 곳(구글 드라이브)에서 다시 받으세요.';
+    return;
+  }
+  $('#updcheck').hidden = false;
+  { const fold = $('#updtokfold'); if (fold) fold.hidden = false; }
   const ready = st.status === 'ready';
   $('#updgo').hidden = !ready;
   $('#updgo').textContent = '새 판 v' + st.version + ' 준비됨 — 지금 다시 시작';

@@ -1,0 +1,201 @@
+/* settings.css — 설정 화면(계정·AI 연결·자료·서식·앱 정보).
+   색·간격·글자는 style.css 의 변수만 쓴다(새 색을 만들지 않는다).
+   부품은 style.css 의 .btn .card .callout .field .chip .seg .src-help 를 그대로 쓴다. */
+
+#view-settings{background:var(--bg)}
+
+.set-wrap{flex:1;display:flex;min-height:0;min-width:0;width:100%;max-width:1116px;margin:0 auto}
+
+/* ---- 왼쪽 갈래 목록(폭 200px, 목록 줄 규칙) */
+.set-nav{
+  flex:none;width:200px;min-width:0;display:flex;flex-direction:column;gap:2px;
+  padding:var(--s4) var(--s2);overflow-y:auto;border-right:1px solid var(--line);
+}
+.set-nav button{
+  justify-content:flex-start;gap:var(--s2);width:100%;height:36px;padding:0 var(--s3);
+  border:none;border-radius:var(--r1);background:none;color:var(--fg2);
+  font-size:13.5px;font-weight:400;text-align:left;
+}
+.set-nav button:hover{background:var(--acc-soft);color:var(--fg)}
+.set-nav button.on{background:var(--acc-soft);color:var(--acc);font-weight:700;box-shadow:inset 2px 0 0 var(--acc)}
+.set-nav-ico{display:flex;color:currentColor;opacity:.85}
+.set-nav button:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+
+/* ---- 오른쪽 내용 */
+.set-scroll{flex:1;min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden}
+.set-pane{
+  max-width:860px;margin:0;padding:var(--s5) var(--s5) var(--s6);
+  display:flex;flex-direction:column;gap:var(--s4);min-width:0;
+}
+.set-pane[hidden]{display:none}
+.set-pane .card{margin:0}
+.set-h1{
+  margin:0;font-family:var(--serif);font-size:20px;font-weight:700;
+  line-height:1.4;color:var(--fg);letter-spacing:0;
+}
+.set-lead{margin:0;font-size:13px;line-height:1.7;color:var(--mut);word-break:keep-all;overflow-wrap:anywhere}
+.set-h2{margin:var(--s2) 0 0;font-size:14px;font-weight:700;color:var(--fg)}
+.set-note{font-size:12px;line-height:1.65;color:var(--mut);margin:0;word-break:keep-all;overflow-wrap:anywhere}
+.set-msg{font-size:12px;line-height:1.6;color:var(--mut);min-height:0}
+.set-msg:empty{display:none}
+.set-msg.ok{color:var(--ok)}
+.set-msg.err{color:var(--err)}
+
+/* ---- 계정 */
+.set-who{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;min-width:0}
+.set-who b{font-size:16px;font-weight:700}
+.set-can{list-style:none;margin:var(--s3) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
+.set-can li{display:flex;gap:var(--s2);align-items:flex-start;font-size:13px;line-height:1.6;color:var(--fg2)}
+.set-can .can-ico{flex:none;width:16px;display:inline-flex;justify-content:center;font-weight:700}
+.set-can .can-ico.yes{color:var(--ok)}
+.set-can .can-ico.no{color:var(--mut)}
+.set-can b{color:var(--fg)}
+.set-form{display:flex;gap:var(--s2);align-items:flex-end;flex-wrap:wrap;margin-top:var(--s3)}
+.set-form .field{flex:1 1 180px;min-width:0;max-width:360px}
+.set-form .btn{flex:none}
+
+/* 권한 배지 */
+.badge{
+  display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:var(--r-pill);
+  font-size:11.5px;font-weight:700;line-height:1;border:1px solid var(--line2);color:var(--fg2);background:var(--bg);
+}
+.badge.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent);background:color-mix(in srgb,var(--ok) 10%,transparent)}
+.badge.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.badge.acc{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 40%,transparent);background:var(--acc-soft)}
+.badge.mut{color:var(--mut)}
+
+/* ---- AI 연결 */
+.set-group{display:flex;flex-direction:column;gap:var(--s2);min-width:0}
+.set-group > h3{margin:0;font-size:13px;font-weight:700;color:var(--fg2)}
+.ai-card{
+  border:1px solid var(--line);border-radius:var(--r2);background:var(--paper);
+  padding:var(--s4) var(--s4) var(--s4);display:flex;flex-direction:column;gap:var(--s2);min-width:0;
+}
+.ai-card + .ai-card{margin-top:var(--s2)}
+.ai-head{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;min-width:0}
+.ai-head b{font-size:14px;font-weight:700;line-height:1.4}
+.ai-head .spacer{flex:1}
+.ai-desc{font-size:12.5px;line-height:1.7;color:var(--fg2);margin:0;word-break:keep-all;overflow-wrap:anywhere}
+.ai-fields{display:flex;gap:var(--s2);flex-wrap:wrap;min-width:0}
+.ai-fields .field{flex:1 1 200px;min-width:0}
+.ai-acts{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.ai-acts .set-msg{flex:1 1 120px}
+.ai-keyurl{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;font-size:12px;color:var(--mut);min-width:0}
+.ai-keyurl code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.ai-foot{font-size:11.5px;line-height:1.65;color:var(--mut);margin:0;word-break:keep-all;overflow-wrap:anywhere}
+
+/* 구독 연결 점검표 */
+.chk{list-style:none;margin:var(--s1) 0 0;padding:0;display:flex;flex-direction:column;gap:var(--s1)}
+.chk-row{display:flex;gap:var(--s2);align-items:flex-start;padding:var(--s2) 0;border-top:1px solid var(--line);min-width:0}
+.chk-row:first-child{border-top:none}
+.chk-ic{
+  flex:none;width:18px;height:18px;margin-top:1px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:50%;font-size:11px;font-weight:700;border:1.5px solid var(--line2);color:var(--mut);
+}
+.chk-row.done .chk-ic{background:var(--ok);border-color:var(--ok);color:var(--paper)}
+.chk-row.todo .chk-ic{border-color:var(--line2);color:var(--line2)}
+.chk-row.now .chk-ic{border-color:var(--acc);color:var(--acc)}
+.chk-row.fail .chk-ic{border-color:var(--err);color:var(--err)}
+.chk-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.chk-t{font-size:13px;font-weight:700;color:var(--fg);line-height:1.5}
+.chk-row.todo .chk-t{color:var(--fg2)}
+.chk-d{font-size:12px;line-height:1.65;color:var(--mut);word-break:keep-all;overflow-wrap:anywhere}
+.chk-acts{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.cmdbox{
+  display:flex;align-items:center;gap:var(--s2);min-width:0;
+  background:var(--bg);border:1px solid var(--line);border-radius:var(--r1);padding:6px 8px;
+}
+.cmdbox code{
+  flex:1;min-width:0;background:none;padding:0;font-size:12px;line-height:1.5;color:var(--fg2);
+  word-break:break-all;white-space:pre-wrap;
+}
+.chk-hint{
+  font-size:12px;line-height:1.6;color:var(--acc);
+  background:var(--acc-soft);border-left:3px solid var(--acc);border-radius:0 var(--r1) var(--r1) 0;
+  padding:var(--s2) var(--s3);word-break:keep-all;overflow-wrap:anywhere;
+}
+.chk-model{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;font-size:12px;color:var(--fg2)}
+
+/* 회원 내 AI */
+.set-chips{display:flex;gap:var(--s2);flex-wrap:wrap;margin-top:var(--s2)}
+.set-chips .chip{height:28px;font-size:12.5px}
+.set-chips .chip small{font-size:11px;color:var(--ok);margin-left:4px}
+.ai-default{display:flex;flex-direction:column;gap:6px;margin-top:var(--s3)}
+.set-check{display:flex;align-items:center;gap:6px;font-size:12.5px;line-height:1.6;color:var(--fg2);cursor:pointer}
+.set-check input{flex:none;margin:0}
+.ai-default label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2)}
+
+/* ---- 자료 */
+.set-adv{padding:var(--s3) var(--s4)}
+.set-adv > summary{
+  cursor:pointer;list-style:none;font-size:13px;font-weight:700;color:var(--fg2);
+  display:flex;align-items:center;gap:6px;
+}
+.set-adv > summary::-webkit-details-marker{display:none}
+.set-adv > summary::before{
+  content:'';width:0;height:0;border-left:5px solid currentColor;border-top:4px solid transparent;
+  border-bottom:4px solid transparent;transition:transform var(--t);
+}
+.set-adv[open] > summary::before{transform:rotate(90deg)}
+.set-adv-body{padding-top:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
+.set-adv-body .card-desc{margin:0}
+#appsrc-body{display:flex;flex-direction:column;gap:var(--s2);margin-top:var(--s1)}
+#appsrc-card #itemsbox{margin-top:var(--s3)}
+/* 설치된 출처: 카드 제목바로 아래에 구분선이 겹치지 않게 */
+#srclist .src-row:first-child{border-top:none;padding-top:0}
+#appsrc-card .card-desc{margin:0}
+
+/* ---- 서식 */
+.set-preview{display:flex;flex-direction:column;gap:var(--s2)}
+.set-preview-h{font-size:12px;font-weight:700;color:var(--fg2);display:flex;gap:var(--s2);align-items:baseline;flex-wrap:wrap}
+.set-preview-h .muted{font-weight:400}
+.set-prev-body{border-top:1px solid var(--line);padding-top:var(--s2)}
+.set-prev-note{border-top:1px dashed var(--line);padding-top:var(--s2);color:var(--fg2)}
+.set-prev-note .note{border-left:3px solid var(--gold);padding-left:var(--s3)}
+.set-format{min-width:0}
+
+/* 서식 서랍의 내용을 설정 갈래 안에 그대로 놓는다(같은 코드, 그리는 자리만 다름) */
+#view-settings .format-pop{
+  position:static;inset:auto;width:auto;max-width:none;height:auto;overflow:visible;
+  border:1px solid var(--line);border-radius:var(--r2);background:var(--paper);box-shadow:none;
+  animation:none;
+}
+#view-settings .format-pop .fp-body{padding:var(--s4)}
+#view-settings .format-pop .fp-src{margin-top:var(--s2)}
+
+/* ---- 앱 정보 */
+#appinfo{gap:var(--s2)}
+.info-row{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;font-size:13px;color:var(--fg2);min-width:0}
+.info-row > span:first-child{flex:none;width:88px;color:var(--mut);font-size:12px}
+.info-row b{color:var(--fg);font-weight:700}
+.info-row code{
+  background:var(--bg);border:1px solid var(--line);padding:2px 6px;border-radius:4px;
+  font-size:12px;word-break:break-all;
+}
+
+/* ---- 좁은 창: 갈래 목록이 위쪽 밑줄 탭이 된다 */
+@media (max-width:900px){
+  .set-wrap{flex-direction:column}
+  .set-nav{
+    width:auto;flex-direction:row;gap:0;padding:0 var(--s3);border-right:none;
+    border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  }
+  .set-nav::-webkit-scrollbar{display:none}
+  .set-nav button{
+    width:auto;height:44px;padding:0 var(--s3);border-radius:0;
+    border-bottom:2px solid transparent;background:none;white-space:nowrap;
+  }
+  .set-nav button:hover{background:none;color:var(--fg)}
+  .set-nav button.on{background:none;border-bottom-color:var(--acc);color:var(--acc);box-shadow:none}
+  .set-nav-ico{display:none}
+  .set-pane{padding:var(--s4) var(--s4) var(--s6);gap:var(--s3)}
+  .set-h1{font-size:16px}
+}
+@media (max-width:700px){
+  .set-pane{padding:var(--s3) var(--s3) var(--s5)}
+  .ai-card{padding:var(--s3)}
+  .ai-fields .field{flex:1 1 100%}
+  .set-form .field{flex:1 1 100%}
+  .chk-acts .btn{height:28px;font-size:12.5px}
+  #view-settings .format-pop .fp-body{padding:var(--s3)}
+}
