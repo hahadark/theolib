@@ -43,16 +43,20 @@ jobs:
           $v = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME } else { "dev-$($env:GITHUB_SHA.Substring(0,7))" }
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Get-ChildItem target/release/bundle/nsis/*.exe | Select-Object -First 1 | Copy-Item -Destination "dist/Theolib-$v-windows-x64-setup.exe"
-          # 포터블: 설치 없이 실행하는 exe 하나(화면 파일·글꼴은 exe 안에 들어 있음)를 zip 으로
-          New-Item -ItemType Directory -Force -Path portable | Out-Null
+          # 포터블: 설치 없이 실행. portable.txt 가 있으면 자료·설정을 이 폴더의 data 에 둔다. 내장 기본 자료는 resources/free 에서 처음 실행 때 설치된다.
+          New-Item -ItemType Directory -Force -Path portable/resources/free | Out-Null
           Copy-Item target/release/theolib-app.exe -Destination "portable/Theolib.exe"
+          Copy-Item src-tauri/resources/free/* -Destination "portable/resources/free/"
+          Set-Content -Encoding utf8 -Path "portable/portable.txt" -Value "이 파일이 있으면 자료를 이 폴더의 data 안에 둡니다(포터블 모드). 지우지 마세요."
           Set-Content -Encoding utf8 -Path "portable/읽어 보세요.txt" -Value @(
             "신학 서재 포터블판 ($v)",
             "",
-            "설치 없이 Theolib.exe 를 바로 실행합니다.",
+            "이 폴더를 통째로 원하는 자리에 풀고 Theolib.exe 를 실행합니다. 설치는 필요 없습니다.",
+            "자료·책갈피·화면 설정은 이 폴더의 data 안에 저장됩니다(portable.txt 와 resources 폴더는 지우지 마세요).",
+            "저작권이 끝난 기본 자료는 처음 켤 때 자동으로 설치됩니다. 그 밖의 자료와 AI 본문연구는 회원 로그인 뒤 설정에서 연결합니다.",
             "필요한 것: Microsoft Edge WebView2 런타임(윈도우 10·11에는 보통 이미 들어 있습니다).",
-            "내려받은 자료·설정·책갈피는 이 폴더가 아니라 사용자 폴더(AppData)에 저장됩니다.",
-            "서명이 없어 처음 실행할 때 'PC 보호' 창이 뜨면 '추가 정보 → 실행'을 누르세요."
+            "서명이 없어 처음 실행할 때 'PC 보호' 창이 뜨면 '추가 정보 → 실행'을 누르세요.",
+            "포터블판은 자동 업데이트를 하지 않습니다. 새 판은 받은 곳에서 다시 받으세요."
           )
           Compress-Archive -Path portable/* -DestinationPath "dist/Theolib-$v-windows-x64-portable.zip"
           Get-ChildItem dist
