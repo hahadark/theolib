@@ -115,4 +115,4 @@ theolib study run --ref "막 2:18-22" --depth quick --engine deepseek
 
 실행 파일 옆에 `data` 폴더(또는 `portable.txt`)가 있으면 그 `data` 를 자료 폴더로 씁니다.
 화면 설정(WebView2 자료)도 `data\webview` 에 두어 폴더째 옮길 수 있습니다. 포터블판은 자동 업데이트를 하지 않습니다.
-맥 빌드는 당분간 하지 않습니다(윈도우만).
+
