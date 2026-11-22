@@ -609,9 +609,14 @@ table.parse tr:hover td{background:var(--acc-soft)}
 /* 항목 고르기 상자 */
 #itemsbox{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);border-radius:var(--r2);background:var(--paper);position:relative}
 #itemsbox:empty{display:none}
-#itemsbox .it-bar{display:flex;gap:var(--s2);align-items:center;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);flex-wrap:wrap}
+/* 목록 상자 안에서 따로 스크롤하지 않는다(2026-11-22). 설정 화면 스크롤 하나로 목록을 훑고,
+   거르개 줄은 위에, 받기 줄은 아래에 붙여 둔다. 안쪽·바깥쪽 스크롤이 겹쳐 휠이 걸리던 문제를 없앤다. */
+#itemsbox .it-bar{
+  display:flex;gap:var(--s2);align-items:center;padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);flex-wrap:wrap;
+  position:sticky;top:0;z-index:6;background:var(--paper);border-radius:var(--r2) var(--r2) 0 0;
+}
 #itemsbox .it-bar input{flex:1 1 180px;min-width:120px}
-#itemsbox .it-scroll{overflow:auto;flex:1;min-height:160px;max-height:min(58vh,720px);padding:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
+#itemsbox .it-scroll{flex:1;min-height:0;padding:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
 .it-empty{padding:var(--s5);text-align:center;color:var(--mut)}
 .it-row{border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
 .it-row-head{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s3);cursor:pointer}
@@ -664,7 +669,8 @@ table.parse tr:hover td{background:var(--acc-soft)}
 .it-books{display:flex;flex-direction:column;gap:var(--s2);min-width:0;padding:var(--s1) 0 var(--s1) 10px;border-left:2px solid var(--line);grid-column:1/-1}
 .it-foot{
   display:flex;gap:var(--s2);align-items:center;padding:var(--s2) var(--s3);
-  border-top:1px solid var(--line);background:var(--bg);flex:none;position:sticky;bottom:0;
+  border-top:1px solid var(--line);background:var(--bg);flex:none;position:sticky;bottom:0;z-index:6;
+  border-radius:0 0 var(--r2) var(--r2);
 }
 .it-foot .spacer{flex:1}
 #itsum{font-size:12px;font-weight:700;color:var(--fg2)}
