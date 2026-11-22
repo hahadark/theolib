@@ -64,6 +64,15 @@ pub async fn web_logout() -> R<()> {
         .map_err(e)?
 }
 
+/// 웹 서재 화면(가입·로그인·프로필)을 기본 브라우저로 연다. 허용한 path 만(/signup, /login, /, /#/profile, /#/study).
+#[tauri::command]
+pub async fn web_open(path: String) -> R<()> {
+    let h = home()?;
+    tauri::async_runtime::spawn_blocking(move || web::open_in_browser(&h, &path).map_err(e))
+        .await
+        .map_err(e)?
+}
+
 /// 서재 주소 상태(지금 주소·빌드에 든 기본값을 쓰는 중인가·기본값이 있는가).
 #[tauri::command]
 pub async fn web_base_get() -> R<web::BaseInfo> {

@@ -86,6 +86,17 @@
   }
 
   // ------------------------------------------------------------ 계정
+  // 시작할 때 로그인 창을 꺼 두었는가(welcome.js 와 같은 열쇠).
+  const WELCOME_KEY = 'theolib.ui.welcome';
+  function welcomeOff() {
+    try { return localStorage.getItem(WELCOME_KEY) === 'off'; } catch (e) { return false; }
+  }
+  // 웹 서재 화면(가입·프로필)을 기본 브라우저로 연다.
+  async function webOpen(path) {
+    try { await invoke('web_open', { path }); return ''; }
+    catch (e) { return (typeof e === 'string' ? e : (e && e.message)) || '브라우저를 열지 못했습니다.'; }
+  }
+
   function canRows(scope) {
     const s = scope || 'none';
     const ai = {
@@ -130,15 +141,18 @@
 
     if (!web.logged_in) {
       out.push('<section class="card">'
-        + '<h2 class="card-title">서재 계정으로 로그인</h2>'
-        + '<p class="card-desc">온라인 신학서재와 같은 계정입니다. 비밀번호는 저장하지 않고, 로그인 상태만 이 컴퓨터의 보안 저장소에 둡니다.</p>'
+        + '<h2 class="card-title">회원 로그인</h2>'
+        + '<p class="card-desc">신학 서재는 회원용 프로그램입니다. 온라인 신학서재에서 가입한 아이디로 로그인하세요.</p>'
         + (noBase ? '<p class="set-note">서재 주소를 먼저 넣어 주세요.</p>' : '')
-        + '<div class="set-form">'
+        + '<div class="set-form set-form-login">'
         + '<label class="field"><span>아이디</span><input id="set-id" autocomplete="username" spellcheck="false"' + (noBase ? ' disabled' : '') + '></label>'
         + '<label class="field"><span>비밀번호</span><input id="set-pw" type="password" autocomplete="current-password"' + (noBase ? ' disabled' : '') + '></label>'
         + '<button type="button" class="btn btn-primary" id="set-login"' + (noBase ? ' disabled' : '') + '>로그인</button>'
         + '</div>'
         + '<div id="set-login-msg" class="set-msg"></div>'
+        + '<div class="set-join"><span class="muted">아직 회원이 아니신가요?</span>'
+        + '<button type="button" class="btn" id="set-signup"' + (noBase ? ' disabled' : '') + '>' + ico('external', 16) + '신학서재에서 가입하기</button></div>'
+        + '<p id="set-signup-note" class="set-note" hidden>브라우저에서 가입을 마친 다음, 이 창으로 돌아와 가입한 아이디로 로그인하세요. (가입에는 서재에서 안내받은 공통 비밀번호가 필요합니다.)</p>'
         + '</section>');
       out.push('<section class="card">'
         + '<details class="src-help"><summary class="disclosure">게스트로 들어가기</summary>'
@@ -152,6 +166,12 @@
     } else {
       const label = sc.label || SCOPE_LABEL[sc.scope] || '';
       const bcls = sc.scope === 'owner' ? 'ok' : sc.scope === 'special' ? 'acc' : sc.scope === 'member' ? 'acc' : 'mut';
+      // 회원·게스트에게는 지금 권한으로는 안 되는 일을 한 줄로 알린다.
+      const canNote = sc.scope === 'member'
+        ? '번역본·주석 등 서재 자료 받기와 서재 구독 AI 는 특별 계정에서 쓸 수 있습니다. 필요하면 서재 관리자에게 문의하세요.'
+        : sc.scope === 'guest'
+          ? '서재 자료 받기와 서재 구독 AI 는 특별 계정에서 쓸 수 있습니다. 회원으로 로그인하면 본인 API 키로 AI 연구를 합니다.'
+          : '';
       out.push('<section class="card">'
         + '<div class="set-who"><b>' + esc(web.user || '서재') + '</b>'
         + '<span class="badge ' + bcls + '">' + esc(label) + '</span>'
@@ -160,7 +180,14 @@
         + '<ul class="set-can">' + canRows(sc.scope).map((r) =>
           '<li><span class="can-ico ' + (r[2] ? 'yes' : 'no') + '">' + (r[2] ? '✓' : '–') + '</span>'
           + '<span><b>' + esc(r[0]) + '</b> · ' + esc(r[1]) + '</span></li>').join('') + '</ul>'
+        + (canNote ? '<p class="set-note set-can-note">' + esc(canNote) + '</p>' : '')
+        + '<p class="set-note set-can-note">비밀번호 바꾸기는 웹 서재의 내 프로필에서 합니다.</p>'
+        + '<div class="set-links"><button type="button" class="btn btn-quiet set-mini" id="set-profile">' + ico('external', 16) + '웹 서재에서 내 프로필 열기</button></div>'
         + '</section>');
+    }
+    // 시작할 때 로그인 창을 꺼 두었으면 여기서 다시 켜게 한다.
+    if (welcomeOff()) {
+      out.push('<div class="set-welcome"><button type="button" class="btn btn-quiet set-mini" id="set-welcome-on">' + ico('log-in', 16) + '시작할 때 로그인 창 다시 보이기</button><span id="set-welcome-msg" class="set-msg"></span></div>');
     }
     if (web.pc_off) {
       out.push('<div class="callout warn">집 PC가 꺼져 있습니다. 자료 종류 건수·원본 그림·서재 서버의 AI 는 쉬고, 이 PC의 AI 는 온라인 사본으로 연구합니다.</div>');
@@ -208,6 +235,31 @@
     if (goBtn) goBtn.onclick = login;
     if (pwEl) pwEl.onkeydown = (e) => { if (e.key === 'Enter') login(); };
     if (idEl) idEl.onkeydown = (e) => { if (e.key === 'Enter' && pwEl) pwEl.focus(); };
+
+    // 가입은 웹 서재에서 한다. 누르면 브라우저를 열고, 그 아래에 돌아오는 법을 안내한다.
+    const signBtn = $('#set-signup', box);
+    if (signBtn) signBtn.onclick = async () => {
+      const err = await webOpen('/signup');
+      if (err) { say(err, true); return; }
+      const note = $('#set-signup-note', box);
+      if (note) note.hidden = false;
+    };
+
+    // 로그인 뒤: 프로필(비밀번호 바꾸기는 웹 서재에서) 열기
+    const prof = $('#set-profile', box);
+    if (prof) prof.onclick = async () => {
+      const err = await webOpen('/#/profile');
+      if (err) say(err, true);
+    };
+
+    // 시작할 때 로그인 창을 다시 켜기
+    const wOn = $('#set-welcome-on', box);
+    if (wOn) wOn.onclick = () => {
+      try { localStorage.removeItem(WELCOME_KEY); } catch (e) {}
+      const row = wOn.parentElement;
+      if (row) row.innerHTML = '<span class="set-note">다음에 앱을 켜면 로그인 창이 또 뜨니다.</span>';
+      else renderAccount();
+    };
 
     // 서재 주소 저장(비었을 때는 로그인 전, 있을 때는 접힘 안에서). 저장하면 계정 상태를 다시 읽는다.
     const bEl = $('#set-base', box);
@@ -270,6 +322,10 @@
     await refreshAll();
     try { window.dispatchEvent(new CustomEvent('theolib:account')); } catch (e) {}
   }
+
+  // 다른 곳(환영 창)에서 계정 상태나 '다시 묻지 않기'를 바꾸면 계정 갈래를 다시 그린다.
+  window.addEventListener('theolib:account', () => { if (S.loaded) renderAccount(); });
+  window.addEventListener('theolib:welcome-off', () => { if (S.loaded) renderAccount(); });
 
   // ------------------------------------------------------------ AI 연결
   function scopeId() { return (S.scope && S.scope.scope) || 'none'; }
@@ -515,7 +571,7 @@
         + '<div class="ai-acts" style="margin-top:var(--s3)"><button type="button" class="btn" data-act="go-account">계정으로 가기</button></div></section>');
     } else {
       out.push('<section class="card"><h2 class="card-title">아직 로그인하지 않았습니다</h2>'
-        + '<p class="card-desc">먼저 계정 갈래에서 로그인해 주세요. 로그인하면 계정 권한에 맞는 AI 가 여기에 나옵니다.</p>'
+        + '<p class="card-desc">회원 로그인이 필요합니다. 로그인하면 계정 권한에 맞는 AI 가 여기에 나옵니다.</p>'
         + '<div class="ai-acts" style="margin-top:var(--s3)"><button type="button" class="btn btn-primary" data-act="go-account">계정으로 가기</button></div></section>');
     }
     box.innerHTML = out.join('');
@@ -530,7 +586,7 @@
       special: '특별 계정입니다. 서재 서버의 구독 AI 로 연구하며 따로 비용이 들지 않습니다.',
       member: '회원 계정입니다. 본인 API 키로 연구하고, 키는 서재 계정에 저장합니다.',
       guest: '게스트입니다. 연구할 때마다 API 키를 넣어 씁니다.',
-      none: '로그인하지 않았습니다. 먼저 계정 갈래에서 로그인해 주세요.',
+      none: '계정 갈래에서 로그인해 주세요.',
     }[sid] || '';
   }
 
@@ -809,7 +865,7 @@
       if (ib) ib.innerHTML = '';
       const sp = $('#srcpreview');
       if (sp) sp.innerHTML = '';
-      box.innerHTML = '<p class="card-desc">번역본·주석 등 저작권 자료는 특별 계정만 받을 수 있습니다. 기본 자료로 성경 보기·검색·원어 사전을 쓸 수 있습니다.</p>'
+      box.innerHTML = '<p class="card-desc">' + (sid === 'none' ? '<b>회원 로그인이 필요합니다.</b> ' : '') + '번역본·주석 등 저작권 자료는 특별 계정만 받을 수 있습니다. 기본 자료로 성경 보기·검색·원어 사전을 쓸 수 있습니다.</p>'
         + (sid === 'none' ? '<div class="ai-acts" style="margin-top:var(--s2)"><button type="button" class="btn" data-act="go-account">계정으로 가기</button></div>' : '');
       const b = $('[data-act="go-account"]', box);
       if (b) b.onclick = () => setTab('account');

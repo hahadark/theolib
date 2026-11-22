@@ -300,6 +300,46 @@ fn web_login_failure_message() {
 }
 
 #[test]
+fn web_open_url_only_for_allowed_paths() {
+    let _g = lock_env();
+    unsafe {
+        std::env::set_var("THEOLIB_KEYSTORE", "file");
+        std::env::remove_var("THEOLIB_WEB_BASE");
+    }
+    if !theolib_core::web::DEFAULT_BASE.trim().is_empty() {
+        return; // 빌드에 기본 주소가 든 판에서는 '주소 없음'을 만들 수 없다
+    }
+    let t = tempfile::tempdir().unwrap();
+    let home = home_at(&t);
+
+    // 주소가 비어 있으면 기존 안내 문구
+    let e = theolib_core::web::browser_url(&home, "/signup").unwrap_err().to_string();
+    assert_eq!(e, theolib_core::web::NO_BASE_MSG);
+
+    theolib_core::web::set_base(&home, "https://library.example/").unwrap();
+
+    // 허용한 경로만 주소를 만든다(실제로 브라우저를 열지 않는다)
+    for (p, want) in [
+        ("/signup", "https://library.example/signup"),
+        ("/login", "https://library.example/login"),
+        ("/", "https://library.example/"),
+        ("/#/profile", "https://library.example/#/profile"),
+        ("/#/study", "https://library.example/#/study"),
+    ] {
+        assert!(theolib_core::web::allowed_open_path(p), "{p}");
+        assert_eq!(theolib_core::web::browser_url(&home, p).unwrap(), want);
+    }
+    assert_eq!(theolib_core::web::base(&home), "https://library.example");
+
+    // 그 밖의 경로는 거절
+    for p in ["/admin", "/#/billing", "/api/me", "//evil.example", "/signup?next=1", "", "#/profile"] {
+        assert!(!theolib_core::web::allowed_open_path(p), "{p}");
+        let e = theolib_core::web::browser_url(&home, p).unwrap_err().to_string();
+        assert!(e.contains("허용되지 않은"), "{p}: {e}");
+    }
+}
+
+#[test]
 fn web_allowed_paths_rejected() {
     let _g = lock_env();
     unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };

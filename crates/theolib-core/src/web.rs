@@ -141,6 +141,53 @@ pub fn base_info(home: &Home) -> BaseInfo {
     BaseInfo { base: b.clone(), is_default: has_default && b == built, has_default }
 }
 
+// ---- 기본 브라우저로 웹 서재 화면 열기 ----
+
+/// 브라우저로 열어도 되는 웹 서재 화면. 그 밖의 경로는 거절한다(열린 주소로 무엇이든 열지 않게).
+const OPEN_PATHS: [&str; 5] = ["/signup", "/login", "/", "/#/profile", "/#/study"];
+
+pub fn allowed_open_path(path: &str) -> bool {
+    OPEN_PATHS.contains(&path)
+}
+
+/// 브라우저로 열 주소를 만든다(순수 함수 — 실제로 열지 않는다).
+/// 허용하지 않은 경로면 오류, 서재 주소가 비어 있으면 [`NO_BASE_MSG`].
+pub fn browser_url(home: &Home, path: &str) -> Result<String> {
+    if !allowed_open_path(path) {
+        bail!("허용되지 않은 주소입니다.");
+    }
+    let base = need_base(home)?;
+    Ok(format!("{base}{path}"))
+}
+
+/// 웹 서재 화면(가입·로그인·프로필)을 기본 브라우저로 연다. 허용한 path 만.
+pub fn open_in_browser(home: &Home, path: &str) -> Result<()> {
+    let url = browser_url(home, path)?;
+    let mut c = if cfg!(windows) {
+        // cmd 를 거치면 & 같은 글자가 문제가 되므로 rundll32 로 바로 넘긴다.
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler").arg(&url);
+        c
+    } else if cfg!(target_os = "macos") {
+        let mut c = std::process::Command::new("open");
+        c.arg(&url);
+        c
+    } else {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+    // 검은 콘솔 창이 뜨지 않게 한다(Windows).
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    c.spawn().map_err(|x| anyhow::anyhow!("브라우저를 열지 못했습니다. ({x})"))?;
+    Ok(())
+}
+
 /// 시험용으로 http://127.0.0.1·http://localhost 도 받는다(그 밖에는 https:// 만).
 fn plain_http_ok(u: &str) -> bool {
     for h in ["http://127.0.0.1", "http://localhost"] {

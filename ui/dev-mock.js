@@ -369,7 +369,7 @@
     if (fn) try { fn({ event: 'study', payload }); } catch (e) {}
   }
   // 시험용 호출 계기(단계 이벤트 몰림 때 study_get 이 얼마나 불리는지 본다).
-  const mockCalls = { study_get: 0, step: 0, lastStart: null };
+  const mockCalls = { study_get: 0, step: 0, lastStart: null, lastOpen: null };
 
   const webMode = () => LS.getItem('mockWeb') || 'out';
   // 권한: localStorage.mockRole = owner|special|member|guest|none (없으면 mockWeb 에서 추정)
@@ -767,11 +767,22 @@
       case 'web_login': {
         if (!baseState().base) return Promise.reject('서재 주소가 설정되지 않았습니다. 설정의 계정에서 서재 주소를 넣어 주세요.');
         if (!args.id || !args.pw) return Promise.reject('아이디나 비밀번호가 맞지 않습니다.');
-        // 시험: 아이디에 member/special 이 들어 있으면 그 권한으로 들어간다.
-        const r = /member/i.test(args.id) ? 'member' : /special/i.test(args.id) ? 'special' : 'owner';
+        // 시험: 틀린 비밀번호는 거절한다(오류 문구 시험용).
+        if (String(args.pw) === 'wrong') return Promise.reject('아이디나 비밀번호가 맞지 않습니다.');
+        // 시험: 아이디로 권한을 고른다 — admin → 관리자, sp1 → 특별 계정, 그 밖 → 회원.
+        const id = String(args.id);
+        const r = id === 'admin' ? 'owner' : id === 'sp1' ? 'special' : 'member';
         LS.setItem('mockRole', r);
         LS.setItem('mockWeb', 'in');
         return Promise.resolve(webStatus());
+      }
+      case 'web_open': {
+        // 진짜 앱은 기본 브라우저를 연다. 시험에서는 부른 경로만 기록한다.
+        const p = String(args.path || '');
+        const allowed = ['/signup', '/login', '/', '/#/profile', '/#/study'];
+        if (!allowed.includes(p)) return Promise.reject('허용되지 않은 주소입니다.');
+        mockCalls.lastOpen = p;
+        return Promise.resolve(null);
       }
       case 'web_guest_login': {
         if (!args.pw) return Promise.reject('공통 비밀번호가 맞지 않습니다.');

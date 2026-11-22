@@ -658,9 +658,11 @@
   function connHtml() {
     const logged = !!(S.web && S.web.logged_in);
     if (!logged) {
-      return '<div class="s-status"><span class="s-status-t">서재에 로그인해 주세요</span>'
+      // 로그인은 환영 창에서, 가입은 웹 서재에서 한다.
+      return '<div class="s-status"><span class="s-status-t">회원 로그인이 필요합니다</span>'
         + '<span class="spacer"></span>'
-        + '<button type="button" class="btn btn-quiet" id="sset">' + ico('settings', 16) + '설정에서 로그인</button></div>';
+        + '<button type="button" class="btn btn-quiet" id="sset">' + ico('log-in', 16) + '로그인</button>'
+        + '<button type="button" class="btn btn-quiet" id="sjoin">' + ico('external', 16) + '가입하기</button></div>';
     }
     const e = engObj();
     const engTxt = e ? (e.name + (e.ready ? ' 준비됨' : ' (설정 필요)')) : '쓸 수 있는 AI 없음';
@@ -836,7 +838,16 @@
 
   function wireConn() {
     const set = $('#sset');
-    if (set) set.onclick = () => openSettings(S.web && S.web.logged_in ? 'ai' : 'account');
+    if (set) set.onclick = () => {
+      // 로그인 전이면 환영 창을 다시 연다(설정의 계정 갈래보다 짧다).
+      if (!(S.web && S.web.logged_in) && window.Welcome) { window.Welcome.open(); return; }
+      openSettings(S.web && S.web.logged_in ? 'ai' : 'account');
+    };
+    const join = $('#sjoin');
+    if (join) join.onclick = async () => {
+      try { await invoke('web_open', { path: '/signup' }); }
+      catch (e) { toast((typeof e === 'string' ? e : (e && e.message)) || '브라우저를 열지 못했습니다.'); }
+    };
   }
 
   function wireHome() {

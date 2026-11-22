@@ -1,0 +1,65 @@
+/* welcome.css — 시작할 때 뜨는 회원 로그인 창. 색·간격은 style.css 의 토큰만 쓴다.
+   부품(대화 상자·입력·단추)은 style.css 규칙을 그대로 쓰고, 이 창에만 필요한 것만 더한다. */
+
+.wel-backdrop{z-index:2400}
+.wel-dlg{width:min(440px,92vw)}
+
+.wel-head{
+  display:flex;flex-direction:column;align-items:flex-start;gap:var(--s2);
+  padding:var(--s5) var(--s5) var(--s3);
+}
+.wel-mark{display:flex;color:var(--acc)}
+.wel-brand{font-family:var(--serif);font-size:26px;line-height:1.25;color:var(--fg);letter-spacing:.01em}
+.wel-lead{
+  margin:0;font-size:13px;line-height:1.7;color:var(--mut);
+  word-break:keep-all;overflow-wrap:anywhere;
+}
+
+.wel-dlg .dialog-body{padding-top:0}
+/* 라벨은 앱의 입력 규칙(12px 굵게)을 따른다 */
+.wel-dlg .field > span{font-size:12px;font-weight:700;color:var(--fg2);letter-spacing:.01em}
+.wel-go{display:flex;justify-content:flex-end}
+.wel-go .btn-primary{min-width:104px;justify-content:center}
+
+.wel-msg{font-size:12px;line-height:1.6;color:var(--mut);min-height:0}
+.wel-msg:empty{display:none}
+.wel-msg.err{color:var(--err)}
+
+.wel-signup{
+  display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;
+  font-size:12.5px;color:var(--mut);padding-top:var(--s2);border-top:1px solid var(--line);
+}
+.wel-mini{font-size:12px;height:26px;padding:0 8px}
+.wel-note{
+  margin:0;font-size:12px;line-height:1.7;color:var(--mut);
+  word-break:keep-all;overflow-wrap:anywhere;
+}
+
+.wel-dlg .dialog-actions{padding-top:var(--s3)}
+.wel-ck{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);cursor:pointer}
+.wel-ck input{
+  appearance:none;-webkit-appearance:none;flex:none;width:14px;height:14px;margin:0;
+  border:1px solid var(--line2);border-radius:3px;background:var(--paper);cursor:pointer;position:relative;
+}
+.wel-ck input:hover{border-color:var(--mut)}
+.wel-ck input:checked{background:var(--acc);border-color:var(--acc)}
+.wel-ck input:checked::after{
+  content:'';position:absolute;left:3.5px;top:0.5px;width:4px;height:8px;
+  border:solid var(--on-acc);border-width:0 2px 2px 0;transform:rotate(40deg);
+}
+.wel-ck input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+
+/* 알림 한 줄(3초). study.css 의 .stoast 와 같은 모양이다. */
+.toast{
+  position:fixed;left:50%;bottom:calc(24px + var(--s4));transform:translateX(-50%) translateY(6px);
+  z-index:4000;max-width:70vw;padding:9px 16px;border-radius:var(--r-pill);
+  background:var(--rail);color:var(--rail-on);font-size:13px;line-height:1.4;
+  opacity:0;transition:opacity 160ms ease-out,transform 160ms ease-out;pointer-events:none;
+  box-shadow:var(--shadow);
+}
+.toast.on{opacity:.96;transform:translateX(-50%)}
+
+@media (max-width:520px){
+  .wel-head{padding:var(--s4) var(--s4) var(--s2)}
+  .wel-brand{font-size:20px}
+}
