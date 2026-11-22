@@ -8,3 +8,4 @@ data/
 .theolib-test/
 docs/*.png
 real-source/
+src-tauri/gen/schemas/windows-schema.json
