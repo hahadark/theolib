@@ -779,7 +779,7 @@
       case 'web_open': {
         // 진짜 앱은 기본 브라우저를 연다. 시험에서는 부른 경로만 기록한다.
         const p = String(args.path || '');
-        const allowed = ['/signup', '/login', '/', '/#/profile', '/#/study'];
+        const allowed = ['/signup', '/login', '/', '/#/profile', '/#/study', '/#/me/sermons'];
         if (!allowed.includes(p)) return Promise.reject('허용되지 않은 주소입니다.');
         mockCalls.lastOpen = p;
         return Promise.resolve(null);
@@ -848,6 +848,16 @@
           return Promise.resolve({ status: 200, body: has ? { ok: true } : { ok: false, error: 'API 키를 넣어 주세요' } });
         }
         if (base === '/api/study/sources') return Promise.resolve({ status: 200, body: sourcesBody(q.get('ref') || '') });
+        if (base === '/api/me/sermons') {      // 내 설교 자료실: 본문이 있으면 2편이 맞는 것으로 흉내
+          const ref = (q.get('ref') || '').trim();
+          const full = q.get('full') === '1';
+          const items = ref ? [
+            { id: 1, date: '2026-11-20', service: '금요기도회', title: '성령 충만은 예수님 충만', passage: '사도행전 6:8-15', summary: '시험용 요약', ...(full ? { text: '시험용 설교 전문' } : {}) },
+            { id: 2, date: '2026-10-30', service: '금요기도회', title: '원망이 섬김으로 바뀌는 교회', passage: '사도행전 6:1-7', summary: '시험용 요약', ...(full ? { text: '시험용 설교 전문' } : {}) },
+          ] : [];
+          mockCalls.lastMySermons = path;
+          return Promise.resolve({ status: 200, body: { ref_ok: !!ref, match: items.length, total: 145, items } });
+        }
         if (base === '/api/me/sermon-preferences') {
           if ((args.method || 'GET').toUpperCase() === 'POST') {
             const b = args.body || {};
@@ -961,6 +971,7 @@
 
       case 'study_start': {
         const d = args.d || {};
+        mockCalls.lastLocalStart = d;   // 앱에서 돌리는 연구에 무엇이 실렸는지 시험에서 확인
         if (!d.ref) return Promise.resolve({ status: 400, body: { ok: false, error: '본문을 넣어 주세요' } });
         const id = startJob(d);
         return Promise.resolve({ status: 200, body: { ok: true, id } });

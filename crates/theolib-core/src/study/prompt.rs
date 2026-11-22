@@ -60,6 +60,70 @@ pub const CHOICES_NOTE: &str = r#"[답 끝에 반드시 넣을 버튼 블록] �
 - 보기는 2~5개 짧게. 여러 개 골라도 되는 질문만 "multi": true. next는 항상 2~3개.
 - 블록 안은 올바른 JSON. 같은 질문을 블록 밖 본문에 또 쓰지 않는다."#;
 
+/// 깊이별 내 설교 편수·전문 길이(글자). 서재 서버(study.py MY_MAX)와 같은 값.
+fn my_limits(depth: &str) -> (usize, usize) {
+    match depth {
+        "quick" => (2, 4000),
+        "deep" => (5, 12000),
+        _ => (3, 8000),
+    }
+}
+
+fn cut_chars(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
+/// 화면이 보낸 내 설교 목록(내 설교 자료실에서 같은 장을 다룬 본인 설교)을 정리한다.
+/// 제목이 없거나 요약·전문이 모두 빈 것은 버리고, 깊이에 맞춰 편수와 길이를 줄인다.
+pub fn clean_my_sermons(v: Option<&serde_json::Value>, depth: &str) -> serde_json::Value {
+    let (n, cap) = my_limits(depth);
+    let mut out = Vec::new();
+    for x in v.and_then(|a| a.as_array()).map(|a| a.as_slice()).unwrap_or(&[]).iter() {
+        if out.len() >= n {
+            break;
+        }
+        let g = |k: &str| x.get(k).and_then(|t| t.as_str()).unwrap_or("").trim().to_string();
+        let text = g("text");
+        let long = text.chars().count() > cap;
+        let mut text = cut_chars(&text, cap);
+        if long {
+            text.push_str("\n(이하 생략)");
+        }
+        let title = cut_chars(&g("title"), 200);
+        let summary = cut_chars(&g("summary"), 1500);
+        if title.is_empty() || (summary.is_empty() && text.is_empty()) {
+            continue;
+        }
+        out.push(json!({
+            "date": cut_chars(&g("date"), 10), "service": cut_chars(&g("service"), 20), "title": title,
+            "passage": cut_chars(&g("passage"), 100), "summary": summary, "text": text,
+        }));
+    }
+    serde_json::Value::Array(out)
+}
+
+/// 내 설교를 지시문에 넣는 덩어리(서버 지시문을 받지 못했을 때 쓰는 대체본). 없으면 빈 문자열.
+pub fn my_sermons_block(items: &serde_json::Value) -> String {
+    let Some(a) = items.as_array().filter(|a| !a.is_empty()) else { return String::new() };
+    let mut s = vec![
+        "[이용자 본인의 지난 설교: 내 설교 자료실에서 고른 것]".to_string(),
+        "아래는 이용자 본인이 같은 본문(장)으로 전에 직접 한 설교다. 서재의 책이 아니므로 도구로 찾지 말고 여기 적힌 내용만 쓴다. 자막을 옮긴 글이라 오탈자가 있을 수 있다.".to_string(),
+        "쓰는 법: (1) 주해의 근거로 삼지 않는다. 성경 본문과 주석이 우선이다. (2) 설교자 본인이 전에 이 본문을 어떻게 이해하고 무엇을 강조했는지 파악해, 이번에 이어 갈 점과 새로 살펴볼 점을 구분한다. (3) 이미 쓴 대지·예화·적용이 무엇인지 알려 주어 같은 내용을 되풀이하지 않게 돕는다. (4) 주석과 다르게 풀었던 곳이 있으면 평가하지 말고 차이만 짚는다. (5) 보고서 끝에 '내 지난 설교와 이어 보기' 절을 두고 설교마다 2~4줄로 정리한다. 인용할 때는 '내 설교(날짜, 제목)'라고 밝히고 링크는 달지 않는다.".to_string(),
+    ];
+    for (i, x) in a.iter().enumerate() {
+        let g = |k: &str| x.get(k).and_then(|t| t.as_str()).unwrap_or("");
+        let passage = if g("passage").is_empty() { String::new() } else { format!(" · {}", g("passage")) };
+        s.push(format!("### 내 설교 {}. {} ({} · {}{})", i + 1, g("title"), g("date"), g("service"), passage));
+        if !g("summary").is_empty() {
+            s.push(format!("요약:\n{}", g("summary")));
+        }
+        if !g("text").is_empty() {
+            s.push(format!("전문:\n{}", g("text")));
+        }
+    }
+    s.join("\n")
+}
+
 /// images=false 이면 SYSTEM 의 원본 그림 문장을 원어 자료 확인 문장으로 바꾼다.
 fn system_for(images: bool) -> String {
     if images {
@@ -73,7 +137,7 @@ fn system_for(images: bool) -> String {
 }
 
 /// 첫 turn 사용자 지시(sources_block 없이).
-fn build_first_prompt(ref_: &str, purpose: &str, depth: &str, notes: &str) -> String {
+fn build_first_prompt(ref_: &str, purpose: &str, depth: &str, notes: &str, my: &str) -> String {
     let info = crate::study::depth_info(depth);
     let mut s = vec![
         format!("[연구할 본문] {ref_}"),
@@ -82,6 +146,9 @@ fn build_first_prompt(ref_: &str, purpose: &str, depth: &str, notes: &str) -> St
     ];
     if !notes.is_empty() {
         s.push(format!("[이용자 요청·청중 정보]\n{notes}"));
+    }
+    if !my.is_empty() {
+        s.push(my.to_string());
     }
     s.push(REPORT.replace("{ref}", ref_).replace("{purpose}", purpose));
     s.push(CHOICES_NOTE.to_string());
@@ -114,6 +181,14 @@ pub struct Prompts {
 /// 서버에서 지시문을 받는다. 로그인 안 됨·404·503·연결 실패면 내장 대체본.
 /// 403(관리자 아님)은 오류로 멈춘다.
 pub fn get(home: &Home, ref_: &str, purpose: &str, depth: &str, notes: &str, q: Option<&str>, prev_md: Option<&str>, images: bool, on_info: &mut dyn FnMut(&str)) -> Result<Prompts, String> {
+    get_with(home, ref_, purpose, depth, notes, q, prev_md, images, None, on_info)
+}
+
+/// [`get`] 에 내 설교(내 설교 자료실에서 고른 것, [`clean_my_sermons`] 로 정리한 배열)를 더한 것.
+/// 서버 지시문에는 그대로 넘겨 서버가 넣게 하고, 대체본에는 [`my_sermons_block`] 을 넣는다. 이어 묻기에는 넣지 않는다.
+#[allow(clippy::too_many_arguments)]
+pub fn get_with(home: &Home, ref_: &str, purpose: &str, depth: &str, notes: &str, q: Option<&str>, prev_md: Option<&str>, images: bool, my_sermons: Option<&serde_json::Value>, on_info: &mut dyn FnMut(&str)) -> Result<Prompts, String> {
+    let my = if q.is_none() { my_sermons.cloned().unwrap_or(json!([])) } else { json!([]) };
     let st = crate::web::status(home);
     if st.logged_in {
         let req = json!({
@@ -124,6 +199,7 @@ pub fn get(home: &Home, ref_: &str, purpose: &str, depth: &str, notes: &str, q: 
             "cats": null,
             "sermon_options": {},
             "images": images,
+            "my_sermons": my,
             "q": q,
             "prev_md": prev_md,
         });
@@ -148,7 +224,7 @@ pub fn get(home: &Home, ref_: &str, purpose: &str, depth: &str, notes: &str, q: 
     }
     on_info("서재 서버에서 지시문을 받지 못해 앱에 든 기본 지시문으로 연구합니다(참고 자료 목록 없음).");
     let user = match q {
-        None => build_first_prompt(ref_, purpose, depth, notes),
+        None => build_first_prompt(ref_, purpose, depth, notes, &my_sermons_block(&my)),
         Some(qq) => build_ask_prompt(ref_, purpose, qq, prev_md.unwrap_or("")),
     };
     Ok(Prompts {
@@ -157,4 +233,41 @@ pub fn get(home: &Home, ref_: &str, purpose: &str, depth: &str, notes: &str, q: 
         max_steps: crate::study::depth_info(depth).2,
         from_server: false,
     })
+}
+
+#[cfg(test)]
+mod my_tests {
+    use super::*;
+
+    #[test]
+    fn my_sermons_clean_and_block() {
+        let long = "가".repeat(9000);
+        let v = json!([
+            {"date": "2026-11-20", "service": "금요기도회", "title": "첫째", "passage": "사도행전 6:8-15", "summary": "요약", "text": long},
+            {"date": "2026-10-30", "service": "금요기도회", "title": "둘째", "summary": "", "text": "본문"},
+            {"date": "2023-04-23", "title": "", "summary": "제목 없음"},
+            {"date": "2020-01-01", "title": "넷째", "summary": "", "text": ""},
+            {"date": "2019-01-01", "title": "다섯째", "summary": "s"}
+        ]);
+        let q = clean_my_sermons(Some(&v), "quick");
+        assert_eq!(q.as_array().unwrap().len(), 2);
+        assert!(q[0]["text"].as_str().unwrap().ends_with("(이하 생략)"));
+        assert_eq!(q[0]["text"].as_str().unwrap().chars().count(), 4000 + "\n(이하 생략)".chars().count());
+        let d = clean_my_sermons(Some(&v), "deep");
+        assert_eq!(d.as_array().unwrap().len(), 3); // 제목 없는 것, 내용 없는 것은 빠진다
+        assert_eq!(d[0]["text"].as_str().unwrap().chars().count(), 9000);
+        assert_eq!(d[2]["title"], "다섯째");
+        assert_eq!(clean_my_sermons(None, "normal"), json!([]));
+        assert_eq!(clean_my_sermons(Some(&json!("x")), "normal"), json!([]));
+
+        let b = my_sermons_block(&q);
+        assert!(b.starts_with("[이용자 본인의 지난 설교"));
+        assert!(b.contains("### 내 설교 1. 첫째 (2026-11-20 · 금요기도회 · 사도행전 6:8-15)"));
+        assert!(b.contains("### 내 설교 2. 둘째 (2026-10-30 · 금요기도회)"));
+        assert_eq!(my_sermons_block(&json!([])), "");
+
+        let p = build_first_prompt("행 6:8-15", "금요기도회 설교", "normal", "", &b);
+        assert!(p.find("[이용자 본인의 지난 설교").unwrap() < p.find("[보고서 틀]").unwrap());
+        assert!(!build_first_prompt("행 6", "금요기도회 설교", "normal", "", "").contains("내 설교"));
+    }
 }

@@ -1609,3 +1609,65 @@ fn stop_queued_b_does_not_stop_running_a() {
     assert_eq!(rb["status"], "stopped", "B 는 stopped: {rb}");
     assert_eq!(rb["turns"][0]["status"], "stopped");
 }
+
+// 내 설교 자료실: 고른 내 설교가 첫 차례에만 서버 appprompt 로 넘어가고, 연구 기록에는 정리해 담기며 화면에는 전문 없이 나간다.
+#[test]
+fn my_sermons_go_to_appprompt_and_job() {
+    let _g = lock_env();
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let srv = FakeServer::start();
+    unsafe { std::env::set_var("THEOLIB_WEB_BASE", &srv.base) };
+    let t = tempfile::tempdir().unwrap();
+    let home = home_at(&t);
+
+    srv.queue("/login", redirect_resp(303, "/", "th_sess=abc123; Path=/; HttpOnly"));
+    srv.queue("/api/me/mcp", json_resp(200, r#"{"url":"https://example.com/mcp/TOKEN"}"#));
+    srv.queue("/api/me", json_resp(200, r#"{"user":"admin","role":"special","owner":true}"#));
+    theolib_core::web::login(&home, "admin", "pw").unwrap();
+
+    let raw = serde_json::json!([
+        {"date": "2026-11-20", "service": "금요기도회", "title": "성령 충만은 예수님 충만", "passage": "사도행전 6:8-15", "summary": "요약", "text": "전문"},
+        {"date": "2026-10-30", "title": "", "summary": "제목 없는 것은 빠진다"}
+    ]);
+    let my = study::prompt::clean_my_sermons(Some(&raw), "normal");
+    assert_eq!(my.as_array().unwrap().len(), 1);
+
+    // 첫 차례: my_sermons 가 그대로 간다.
+    srv.queue("/api/study/appprompt", json_resp(200, r#"{"ok":true,"system":"SYS","user":"USR","max_steps":24}"#));
+    let p = study::prompt::get_with(&home, "행 6:8-15", "금요기도회 설교", "normal", "", None, None, false, Some(&my), &mut |_| {}).unwrap();
+    assert!(p.from_server);
+    let j: serde_json::Value = serde_json::from_str(&srv.body_of("/api/study/appprompt").unwrap()).unwrap();
+    assert_eq!(j["my_sermons"][0]["title"], "성령 충만은 예수님 충만");
+    assert_eq!(j["my_sermons"][0]["text"], "전문");
+
+    // 연구 기록: 정리해 담고, get 은 전문을 빼고 준다.
+    let (code, body) = study::job::start(&home, &serde_json::json!({"ref": "행 6:8-15", "engine": "deepseek", "my_sermons": raw}));
+    assert_eq!(code, 200, "{body}");
+    let rec = study::job::get(&home, body["id"].as_str().unwrap()).unwrap();
+    assert_eq!(rec["my_sermons"].as_array().unwrap().len(), 1);
+    assert_eq!(rec["my_sermons"][0]["title"], "성령 충만은 예수님 충만");
+    assert!(rec["my_sermons"][0].get("text").is_none());
+    // my_sermons 를 보내지 않은 연구는 빈 목록
+    let (_, b2) = study::job::start(&home, &serde_json::json!({"ref": "막 2:18", "engine": "deepseek"}));
+    assert_eq!(study::job::get(&home, b2["id"].as_str().unwrap()).unwrap()["my_sermons"], serde_json::json!([]));
+}
+
+// 서버 지시문을 못 받으면(로그인 안 됨) 앱에 든 대체 지시문에 내 설교가 들어간다. 이어 묻기에는 넣지 않는다.
+#[test]
+fn my_sermons_in_builtin_prompt_first_turn_only() {
+    let _g = lock_env();
+    unsafe { std::env::set_var("THEOLIB_KEYSTORE", "file") };
+    let srv = FakeServer::start();
+    unsafe { std::env::set_var("THEOLIB_WEB_BASE", &srv.base) };
+    let t = tempfile::tempdir().unwrap();
+    let home = home_at(&t);
+    let my = study::prompt::clean_my_sermons(Some(&serde_json::json!([{"date": "2026-11-20", "service": "금요기도회", "title": "성령 충만은 예수님 충만", "summary": "요약"}])), "quick");
+
+    let p = study::prompt::get_with(&home, "행 6:8-15", "금요기도회 설교", "quick", "", None, None, false, Some(&my), &mut |_| {}).unwrap();
+    assert!(!p.from_server);
+    assert!(p.user.contains("### 내 설교 1. 성령 충만은 예수님 충만 (2026-11-20 · 금요기도회)"));
+    let p2 = study::prompt::get_with(&home, "행 6:8-15", "금요기도회 설교", "quick", "", Some("더 알려 줘"), Some("앞 보고서"), false, Some(&my), &mut |_| {}).unwrap();
+    assert!(!p2.user.contains("내 설교 1."));
+    let p3 = study::prompt::get(&home, "행 6:8-15", "금요기도회 설교", "quick", "", None, None, false, &mut |_| {}).unwrap();
+    assert!(!p3.user.contains("내 설교"));
+}

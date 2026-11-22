@@ -168,6 +168,7 @@ pub fn start(home: &Home, d: &Value) -> (u16, Value) {
     let j = json!({
         "id": id, "created": created, "ref": ref_, "purpose": purpose, "depth": depth, "notes": notes,
         "cats": cats, "sermon_options": sermon_options, "engine": engine, "model": model,
+        "my_sermons": study::prompt::clean_my_sermons(d.get("my_sermons"), &depth),
         "session_id": null, "status": "queued", "turns": [turn],
     });
     let _ = write_job(home, &id, &j);
@@ -313,6 +314,14 @@ pub fn list(home: &Home) -> Value {
 pub fn get(home: &Home, id: &str) -> Option<Value> {
     let mut j = read_job(home, id)?;
     j["status"] = json!(job_status(&j));
+    // 내 설교는 화면에 목록만 준다(전문은 지시문에만 쓴다).
+    if let Some(a) = j.get_mut("my_sermons").and_then(|v| v.as_array_mut()) {
+        for x in a.iter_mut() {
+            if let Some(o) = x.as_object_mut() {
+                o.remove("text");
+            }
+        }
+    }
     Some(j)
 }
 
@@ -604,7 +613,8 @@ fn run_turn(home: &Home, cli: &dyn CliRunner, id: &str, ti: usize, on: &mut dyn 
 
     // 2. 지시문
     let images = engine == "claude";
-    let prompts = match study::prompt::get(home, &ref_, &purpose, &depth, &notes, q.as_deref(), prev_md_for_prompt.as_deref(), images, &mut |s| rec.info("info", s)) {
+    let my_sermons = j.get("my_sermons").cloned();
+    let prompts = match study::prompt::get_with(home, &ref_, &purpose, &depth, &notes, q.as_deref(), prev_md_for_prompt.as_deref(), images, my_sermons.as_ref(), &mut |s| rec.info("info", s)) {
         Ok(p) => p,
         Err(e) => {
             rec.info("error", &e);

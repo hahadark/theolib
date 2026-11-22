@@ -63,6 +63,9 @@
 }
 #view-study .lnk:hover{background:none;color:var(--acc-h)}
 #view-study .chip.zero{opacity:.55}
+#view-study #smybox .scchips{align-items:center}
+#view-study #smybox .lnk{font-size:12px;margin-left:var(--s1)}
+#view-study .smy-note{margin:0 0 var(--s2) calc(64px + var(--s2))}
 
 /* 지난 연구 */
 #view-study .slist-col{min-width:0;display:flex;flex-direction:column;gap:var(--s2)}

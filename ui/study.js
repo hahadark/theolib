@@ -110,6 +110,7 @@
     srAnchor: null,
     srNoClick: 0,
     reading: null,         // 서재 읽기 서랍 상태
+    my: { n: 0, total: 0, ok: false },   // 내 설교 자료실: 이 본문(장)을 다룬 내 설교 수, 전체 수, 본문 인식 여부
   };
   const srDefaults = () => ({ preachers: null, church: '', status: 'all', source_type: 'all', match: 'main', max_items: 5, use: ['interpretation', 'outline', 'application'] });
 
@@ -375,6 +376,43 @@
     srSync();
   }
 
+  // ------------------------------------------------------------ 내 설교 자료실 (선택 항목)
+  // 웹 서재의 '내 설교 자료실'에서 같은 장을 다룬 내 설교를 지시문에 함께 넣는다. 켠 상태는 설정에 저장한다.
+  const smyOn = () => S.settings.my_sermons === true;
+  async function myFor(ref, full) {
+    try {
+      const r = await api('/api/me/sermons?ref=' + encodeURIComponent(ref) + (full ? '&full=1' : ''));
+      return r && Array.isArray(r.items) ? r : { items: [] };
+    } catch (e) { return { items: [] }; }
+  }
+  async function myPack(ref) {
+    return (await myFor(ref, true)).items.map((x) => ({
+      date: x.date, service: x.service, title: x.title, passage: x.passage,
+      summary: String(x.summary || '').slice(0, 1500), text: String(x.text || '').slice(0, 12000),
+    }));
+  }
+  function smyPaint() {
+    const box = $('#smybox');
+    if (!box) return;
+    const scope = S.scope && S.scope.scope;
+    if (!S.web.logged_in || scope === 'guest') { box.innerHTML = ''; return; }
+    const m = S.my;
+    const note = !m.total ? '웹 서재의 내 설교 자료실에 설교를 넣으면 여기서 고를 수 있습니다.'
+      : !smyOn() ? ''
+        : !m.ok ? '본문을 넣으면 편수가 보입니다.'
+          : m.n ? '이 본문(장)을 다룬 내 설교 ' + m.n + '편을 최근 것부터 함께 읽습니다 (깊이에 따라 2~5편).'
+            : '이 본문(장)을 다룬 내 설교가 없습니다.';
+    box.innerHTML = '<div class="scg"><span class="scgl">내 자료</span><div class="scchips">'
+      + '<button type="button" class="chip ' + (smyOn() ? 'on' : '') + (m.ok && !m.n ? ' zero' : '') + '" id="smy" title="내 설교 자료실에서 같은 장을 다룬 내 설교를 함께 읽고, 이어 갈 점과 이미 쓴 내용을 정리해 줍니다">내 설교 자료실'
+      + (m.ok ? ' <span class="n">' + m.n + '</span>' : '') + '</button>'
+      + '<button type="button" class="lnk" id="smyopen" title="웹 서재의 내 설교 자료실을 브라우저로 엽니다(설교 넣기·찾기·AI 지침)">자료실 열기</button>'
+      + '</div></div>' + (note ? '<div class="muted s-note smy-note">' + esc(note) + '</div>' : '');
+    $('#smy').onclick = () => { saveSettings({ my_sermons: !smyOn() }); smyPaint(); };
+    $('#smyopen').onclick = async () => {
+      try { await invoke('web_open', { path: '/#/me/sermons' }); } catch (e) { toast(typeof e === 'string' ? e : '브라우저를 열지 못했습니다'); }
+    };
+  }
+
   function srSync() {
     const el = $('#srpanel');
     if (el) el.hidden = !scGet().includes('ref_sermons');
@@ -390,6 +428,11 @@
     if (!S.web.logged_in) return;
     const seq = ++S.scSeq;
     const v = ($('#sref') && $('#sref').value.trim()) || '';
+    myFor(v).then((m) => {
+      if (seq !== S.scSeq) return;
+      S.my = { n: m.match || 0, total: m.total || 0, ok: !!m.ref_ok };
+      smyPaint();
+    });
     let r;
     try {
       r = await api('/api/study/sources?ref=' + encodeURIComponent(v) + '&sermon_options=' + encodeURIComponent(JSON.stringify(srGet())));
@@ -737,7 +780,7 @@
       + (modelOptions() ? '<select id="smodel" aria-label="모델">' + modelOptions() + '</select>' : '') + '</div></div>'
       + '<div id="saikey"></div>'
       + '<label class="field"><span>요청·청중 <span class="muted-inline">(선택)</span></span><textarea id="snote" rows="3" placeholder="예: 청중은 50~70대 중심. 기도에 대한 도전으로 마무리하고 싶음. 기드온의 두려움을 중심으로.">' + esc(S.settings.notes || '') + '</textarea></label>'
-      + '<div class="field"><span>참고할 자료 <span class="muted" id="scmsg">본문을 넣으면 종류마다 몇 개가 있는지 보입니다</span></span><div id="scats"></div></div>'
+      + '<div class="field"><span>참고할 자료 <span class="muted" id="scmsg">본문을 넣으면 종류마다 몇 개가 있는지 보입니다</span></span><div id="scats"></div><div id="smybox"></div></div>'
       + '<div id="sermon-options"></div>'
       + '<div class="sstart"><div id="sgo-wrap"></div><span class="muted" id="smsg"></span></div>'
       + '</div>'
@@ -904,6 +947,7 @@
         ref: r, purpose: $('#spur').value, depth: $('#sdep').value, notes: $('#snote').value,
         cats, sermon_options: srGet(),
       };
+      if (smyOn()) base.my_sermons = await myPack(r);
       let body;
       if (e.kind === 'webkey') {
         // 회원·게스트: 웹판과 같은 본문(ai 안에 provider·model·key·save).
@@ -1256,6 +1300,7 @@
         const r = await post('/api/study/start', {
           ref: j.ref, purpose: j.purpose, depth: j.depth, notes: j.notes, cats: j.cats,
           sermon_options: j.sermon_options, engine: (j.engine || S.eng), model: j.model || S.model,
+          my_sermons: (j.my_sermons && j.my_sermons.length) ? await myPack(j.ref) : [],
         });
         if (r && r.ok) openView(r.id);
       } catch (e) { toast('다시 시작하지 못했습니다'); }

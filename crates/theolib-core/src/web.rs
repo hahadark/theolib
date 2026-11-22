@@ -144,7 +144,7 @@ pub fn base_info(home: &Home) -> BaseInfo {
 // ---- 기본 브라우저로 웹 서재 화면 열기 ----
 
 /// 브라우저로 열어도 되는 웹 서재 화면. 그 밖의 경로는 거절한다(열린 주소로 무엇이든 열지 않게).
-const OPEN_PATHS: [&str; 5] = ["/signup", "/login", "/", "/#/profile", "/#/study"];
+const OPEN_PATHS: [&str; 6] = ["/signup", "/login", "/", "/#/profile", "/#/study", "/#/me/sermons"];
 
 pub fn allowed_open_path(path: &str) -> bool {
     OPEN_PATHS.contains(&path)
@@ -502,8 +502,9 @@ pub struct ApiOut {
 }
 
 /// 허용 경로 목록. `/api/study/` 는 접두사, 나머지는 정확히 일치. `?` 앞부분으로 판정.
-const ALLOWED: [&str; 15] = [
+const ALLOWED: [&str; 16] = [
     "/api/me",
+    "/api/me/sermons",
     "/api/me/mcp",
     "/api/me/sermon-preferences",
     "/api/me/ai-pref",
@@ -636,6 +637,8 @@ mod tests {
     fn allowed_paths() {
         assert!(allowed_path("/api/me"));
         assert!(allowed_path("/api/study/appprompt"));
+        assert!(allowed_path("/api/me/sermons?ref=%ED%96%89%206&full=1"));
+        assert!(!allowed_path("/api/me/sermons/12"));
         assert!(allowed_path("/api/study/sources?ref=x"));
         assert!(allowed_path("/api/pages?book=a&page=1"));
         assert!(!allowed_path("/api/study/../secret"));
