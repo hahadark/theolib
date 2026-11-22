@@ -138,7 +138,8 @@
             <div class="set-adv-body">
               <p class="card-desc">받은 주소 하나를 붙여 넣으세요. 주소는 운영체제 보안 저장소에만 보관되고 화면과 기록에 남기지 않습니다.</p>
               <div class="row">
-                <input id="srcurl" type="password" class="grow" placeholder="https://…@github.com/소유자/저장소 또는 …/theolib.json">
+                <input id="srcurl" type="password" class="grow" readonly autocomplete="off" autocapitalize="off" spellcheck="false" name="theolib-source-address" placeholder="[편집]을 눌러 주소를 넣으세요">
+                <button id="srcedit" class="btn" type="button">편집</button>
                 <button id="srcshow" class="btn" type="button">보기</button>
                 <button id="srccheck" class="btn btn-primary" type="button">확인</button>
               </div>
@@ -182,7 +183,7 @@
                 <button id="updgo" class="btn btn-primary" type="button" hidden>지금 다시 시작</button>
               </div>
               <p id="updmsg" class="muted note-line"></p>
-              <details class="src-help" id="updtokfold"><summary class="disclosure">업데이트용 GitHub 주소</summary><div class="row"><input id="updtoken" type="password" placeholder="https://…@github.com/소유자/저장소 (비워 두면 자료 출처의 주소를 씁니다)"><button id="updtokensave" class="btn" type="button">저장</button></div></details>
+              <details class="src-help" id="updtokfold"><summary class="disclosure">업데이트용 GitHub 주소</summary><div class="row"><input id="updtoken" type="password" class="grow" readonly autocomplete="off" autocapitalize="off" spellcheck="false" name="theolib-update-address" placeholder="[편집]을 눌러 주소를 넣으세요"><button id="updedit" class="btn" type="button">편집</button><button id="updtokensave" class="btn" type="button">저장</button></div></details>
             </div>
           </section>
           <details class="card src-help"><summary class="disclosure">글꼴·아이콘 라이선스</summary><p class="muted note-line">나눔글꼴 © NAVER (SIL OFL) · 서울서체 © 서울특별시 (공공누리 제1유형) · 아이콘은 Lucide(ISC)를 따랐습니다(ui/icons-LICENSE.txt).</p></details>

@@ -175,6 +175,9 @@ input::placeholder,textarea::placeholder{color:var(--mut)}
 input[type=checkbox],input[type=radio]{height:14px;width:14px;padding:0;accent-color:var(--acc);vertical-align:-2px}
 input[type=color]{padding:2px;width:44px}
 input[type=number]{font-variant-numeric:tabular-nums}
+/* 잠근 칸(readonly): [편집]을 누르기 전에는 고칠 수 없음을 바탕색으로 알린다. */
+input[readonly]{background:var(--bg);color:var(--fg2);cursor:default}
+input[readonly]:focus{border-color:var(--line2);box-shadow:none}
 label{color:var(--fg2)}
 
 #book{width:104px}

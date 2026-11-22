@@ -123,6 +123,21 @@ async function loadSources() {
 }
 const msg = (t, err) => { const m = $('#srcmsg'); if (!m) return; m.textContent = t; m.className = err ? 'err' : 'muted'; };
 async function run(f) { try { await f(); } catch (x) { msg(String(x), true); } finally { $('#progress').hidden = true; } }
+// 주소 칸은 잠가 두고 [편집]을 눌렀을 때만 고칠 수 있게 한다(브라우저 비밀번호 자동 채움 사고 방지).
+function lockUrlInput(on) {
+  const i = $('#srcurl');
+  if (!i) return;
+  i.readOnly = on;
+  const b = $('#srcedit');
+  if (b) b.textContent = on ? '편집' : '잠금';
+  if (!on) i.focus();
+}
+$('#srcedit').onclick = () => lockUrlInput(!$('#srcurl').readOnly);
+// 칸에서 초점이 빠지면 다시 잠근다.
+$('#srcurl').addEventListener('blur', () => lockUrlInput(true));
+$('#updedit').onclick = () => { const i = $('#updtoken'); i.readOnly = !i.readOnly; $('#updedit').textContent = i.readOnly ? '편집' : '잠금'; if (!i.readOnly) i.focus(); };
+$('#updtoken').addEventListener('blur', () => { $('#updtoken').readOnly = true; $('#updedit').textContent = '편집'; });
+lockUrlInput(true);
 $('#srcshow').onclick = () => { const i = $('#srcurl'); i.type = i.type === 'password' ? 'text' : 'password'; };
 const KIND = { bible: '번역본', code: '원어 번호 본문', lex: '사전', comm: '주석' };
 
@@ -183,7 +198,8 @@ async function previewUrl(url) {
   });
   p.append(go);
 }
-$('#srccheck').onclick = () => run(async () => { const url = $('#srcurl').value.trim(); if (url) await previewUrl(url); });
+// 확인한 뒤에는 주소 칸을 다시 잠근다(주소는 previewUrl 이 변수로 들고 간다).
+$('#srccheck').onclick = () => run(async () => { const url = $('#srcurl').value.trim(); if (url) await previewUrl(url); }).then(() => lockUrlInput(true));
 // 설정 화면(settings.js)이 같은 자료 흐름을 그대로 쓰도록 내놓는다.
 // 주소는 화면·입력간에 남기지 않고 변수로만 넘긴다.
 window.AppPreviewUrl = previewUrl;
