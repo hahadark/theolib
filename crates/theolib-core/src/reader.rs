@@ -47,6 +47,26 @@ pub struct Note {
     pub end_key: i64,
     pub ch1: i64,
     pub ch2: i64,
+    pub bk: i64,
+    /// 그 책 안에서의 차례(보정본을 찾는 열쇠). 매튜헨리처럼 차례가 없는 것은 -1.
+    pub seq: i64,
+    /// AI 보정본으로 바꿔 보여 주는 중인지
+    pub fixed: bool,
+}
+
+/// 한 시리즈의 풀이 원문(보정본을 씌우지 않은 글).
+#[derive(Clone, Debug)]
+pub struct RawNote {
+    pub id: i64,
+    pub series: String,
+    pub series_name: String,
+    pub bk: i64,
+    pub seq: i64,
+    pub r#ref: String,
+    pub title: String,
+    pub text: String,
+    pub start_key: i64,
+    pub end_key: i64,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -280,6 +300,45 @@ impl Reader {
                 }
             }
         }
+        // AI 보정본이 켜져 있고 원문이 그때와 같으면 보정본을 보여 준다(받은 자료는 그대로 둔다).
+        let fixes = crate::fix::applied(&self.home, bk);
+        if !fixes.is_empty() {
+            for n in out.iter_mut().filter(|n| n.seq >= 0) {
+                if let Some((h, t)) = fixes.get(&(n.comm.clone(), n.seq)) {
+                    if *h == crate::fix::hash(&n.body) {
+                        n.body = t.clone();
+                        n.fixed = true;
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// 한 시리즈의 풀이 원문. lo..hi 는 장*1000+절 범위, intro 가 참이면 서론(키 0)도 함께.
+    pub fn comm_raw(&self, series: &str, bk: i64, lo: i64, hi: i64, intro: bool) -> Result<Vec<RawNote>> {
+        let mut out: Vec<RawNote> = vec![];
+        for f in self.files("comm") {
+            let c = self.db(&f)?;
+            let Ok(mut s) = c.prepare(
+                "SELECT n.id,n.series,coalesce(m.name,n.series),n.seq,coalesce(n.ref,''),coalesce(n.title,''),coalesce(n.text,''),n.start_key,n.end_key
+                 FROM note n LEFT JOIN series m ON m.id=n.series
+                 WHERE n.series=?1 AND n.bk=?2 AND ((n.start_key<=?4 AND n.end_key>=?3) OR (?5=1 AND n.start_key=0 AND n.end_key=0))
+                 ORDER BY n.seq",
+            ) else {
+                continue;
+            };
+            let r = s.query_map((series, bk, lo, hi, intro as i64), |r| {
+                Ok(RawNote { id: r.get(0)?, series: r.get(1)?, series_name: r.get(2)?, bk, seq: r.get(3)?, r#ref: r.get(4)?, title: r.get(5)?, text: r.get(6)?, start_key: r.get(7)?, end_key: r.get(8)? })
+            })?;
+            for n in r {
+                let n = n?;
+                if !out.iter().any(|o| o.seq == n.seq) {
+                    out.push(n);
+                }
+            }
+        }
+        out.sort_by_key(|n| n.seq);
         Ok(out)
     }
 
@@ -292,7 +351,7 @@ impl Reader {
         // 서론·개론(ch1=0, 키 0)은 1장을 열 때 맨 위에 보인다.
         let intro = if v.is_none() && ch == 1 { 1 } else { 0 };
         let mut s = c.prepare(
-            "SELECT n.id,n.series,coalesce(m.name,n.series),coalesce(n.title,''),coalesce(n.ref,''),coalesce(n.text,''),n.start_key,n.end_key,n.ch1,n.ch2
+            "SELECT n.id,n.series,coalesce(m.name,n.series),coalesce(n.title,''),coalesce(n.ref,''),coalesce(n.text,''),n.start_key,n.end_key,n.ch1,n.ch2,coalesce(n.seq,-1)
              FROM note n LEFT JOIN series m ON m.id=n.series
              WHERE n.bk=?1 AND ((n.start_key<=?3 AND n.end_key>=?2) OR (?4=1 AND n.start_key=0 AND n.end_key=0))
              ORDER BY coalesce(m.ord,99),n.seq",
@@ -300,7 +359,7 @@ impl Reader {
         let r = s.query_map((bk, lo, hi, intro), |r| {
             let title: String = r.get(3)?;
             let (kind, title) = split_kind(&title);
-            Ok(Note { id: r.get(0)?, comm: r.get(1)?, comm_name: r.get(2)?, kind, title, r#ref: r.get(4)?, fmt: "text".into(), body: r.get(5)?, start_key: r.get(6)?, end_key: r.get(7)?, ch1: r.get(8)?, ch2: r.get(9)? })
+            Ok(Note { id: r.get(0)?, comm: r.get(1)?, comm_name: r.get(2)?, kind, title, r#ref: r.get(4)?, fmt: "text".into(), body: r.get(5)?, start_key: r.get(6)?, end_key: r.get(7)?, ch1: r.get(8)?, ch2: r.get(9)?, bk, seq: r.get(10)?, fixed: false })
         })?;
         let mut out: Vec<Note> = r.collect::<rusqlite::Result<_>>()?;
         // 매튜헨리(comm_verse)
@@ -317,7 +376,7 @@ impl Reader {
             last = (comm.clone(), html.clone());
             let name = c.query_row("SELECT coalesce(name,id) FROM series WHERE id=?", [&comm], |r| r.get::<_, String>(0)).unwrap_or(comm.clone());
             let key = ch * 1000 + vv;
-            out.push(Note { id: idn, comm, comm_name: name, kind: String::new(), title: format!("{ch}:{vv}"), r#ref: format!("{ch}:{vv}"), fmt: "html".into(), body: html, start_key: key, end_key: key, ch1: ch, ch2: ch });
+            out.push(Note { id: idn, comm, comm_name: name, kind: String::new(), title: format!("{ch}:{vv}"), r#ref: format!("{ch}:{vv}"), fmt: "html".into(), body: html, start_key: key, end_key: key, ch1: ch, ch2: ch, bk, seq: -1, fixed: false });
             idn -= 1;
         }
         Ok(out)

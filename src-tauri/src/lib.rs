@@ -1,3 +1,4 @@
+mod fix;
 pub mod study;
 mod update;
 use serde::Serialize;
@@ -374,6 +375,11 @@ struct NoteOut {
     end_key: i64,
     ch1: i64,
     ch2: i64,
+    bk: i64,
+    /// 그 책 안에서의 차례(보정본을 찾는 열쇠, 없으면 -1)
+    seq: i64,
+    /// AI 보정본을 보여 주는 중인지
+    fixed: bool,
 }
 
 fn note_html(fmt: &str, body: &str) -> String {
@@ -389,7 +395,7 @@ fn notes(bk: i64, ch: i64, v: Option<i64>) -> R<Vec<NoteOut>> {
     Ok(r.comm_for(bk, ch, v)
         .map_err(e)?
         .into_iter()
-        .map(|n| NoteOut { html: note_html(&n.fmt, &n.body), id: n.id, comm: n.comm, comm_name: n.comm_name, kind: n.kind, title: n.title, r#ref: n.r#ref, start_key: n.start_key, end_key: n.end_key, ch1: n.ch1, ch2: n.ch2 })
+        .map(|n| NoteOut { html: note_html(&n.fmt, &n.body), id: n.id, comm: n.comm, comm_name: n.comm_name, kind: n.kind, title: n.title, r#ref: n.r#ref, start_key: n.start_key, end_key: n.end_key, ch1: n.ch1, ch2: n.ch2, bk: n.bk, seq: n.seq, fixed: n.fixed })
         .collect())
 }
 
@@ -560,13 +566,15 @@ pub fn run() {
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
         sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, selftest_report,
-        study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_open, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir
+        study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_open, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir,
+        fix::fix_targets, fix::fix_state, fix::fix_start, fix::fix_stop, fix::fix_pair, fix::fix_approve, fix::fix_discard
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
             sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token,
-            study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_open, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir
+            study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_open, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir,
+        fix::fix_targets, fix::fix_state, fix::fix_start, fix::fix_stop, fix::fix_pair, fix::fix_approve, fix::fix_discard
         ]);
     b.run(tauri::generate_context!())
         .expect("앱을 실행하지 못했습니다");

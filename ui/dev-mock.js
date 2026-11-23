@@ -161,6 +161,15 @@
   const APP_SRC_URL = 'mock://app-source';
   window.__mockAppSrc = APP_SRC_URL;   // 설정 화면(web_app_source)도 같은 가짜 주소를 쓴다
 
+  // 주석 글 AI 보정 시험용 상태. 원문은 일부러 줄이 문장 중간에서 끊기게 지어낸다.
+  const mockFix = {};
+  const mockRun = { running: false, series: '', bk: 0, engine: '', model: '', done: 0, total: 0, notes: [], summary: null };
+  const plain = (n) => String(n.html || '').replace(/<[^>]+>/g, '');
+  const mockOrig = (n) => `${plain(n)} 시험용으로 지어낸 둘째 문장은 줄이 중간에
+서 끊겨 있고 띄어쓰기 도 어긋나 있습니다. 표제어. 표제어 풀이가 한 줄에 붙어 있습니다(행 24:10).`;
+  const mockFixed = (n, num) => `${plain(n)} 시험용으로 지어낸 둘째 문장은 줄이 중간에서 끊겨 있고 띄어쓰기도 어긋나 있습니다.
+표제어. 표제어 풀이가 한 줄에 붙어 있습니다(행 24:${num ? '11' : '10'}).`;
+
   function mockInvoke(cmd, args) {
     args = args || {};
     let r;
@@ -260,10 +269,55 @@
       case 'notes': {
         // 실제 코어와 같게: v 가 없으면 장 전체, 있으면 그 절을 포함하는 해설만.
         const ch = args.ch || 24;
-        if (args.v == null) { const lo = ch * 1000, hi = lo + 999; r = NOTES.filter((n) => n.start_key <= hi && n.end_key >= lo).map((n) => ({ ...n })); }
-        else { const k = args.ch * 1000 + args.v; r = NOTES.filter((n) => n.start_key <= k && n.end_key >= k).map((n) => ({ ...n })); }
+        // 보정본이 켜진 풀이는 보정본 글과 fixed 표시를 단다(코어와 같은 약속: bk·seq·fixed).
+        const dress = (n) => { const f = mockFix[n.id]; const on = f && f.state === 'on'; return { ...n, bk: args.bk, seq: n.comm === 'mh' ? -1 : n.id, fixed: !!on, html: on ? f.text.replace(/\n/g, '<br>') : n.html }; };
+        if (args.v == null) { const lo = ch * 1000, hi = lo + 999; r = NOTES.filter((n) => n.start_key <= hi && n.end_key >= lo).map(dress); }
+        else { const k = args.ch * 1000 + args.v; r = NOTES.filter((n) => n.start_key <= k && n.end_key >= k).map(dress); }
         break;
       }
+      // ---- 주석 글 AI 보정(fix.js). 지어낸 글로 진행·확인 필요·되돌리기를 흉내 낸다.
+      case 'fix_targets': {
+        r = NOTES.filter((n) => n.comm === args.series && n.start_key <= args.hi && n.end_key >= args.lo).map((n) => {
+          const f = mockFix[n.id];
+          return { id: n.id, series: n.comm, series_name: n.comm_name, bk: args.bk, seq: n.id, ref: n.ref, title: n.title, start_key: n.start_key, end_key: n.end_key, chars: mockOrig(n).length, fix: f ? f.state : '', flags: f ? f.flags : '', change: f ? f.change : 0, model: f ? 'gpt-6-sol@low' : '' };
+        });
+        break;
+      }
+      case 'fix_state': r = Object.assign({}, mockRun); break;
+      case 'fix_stop': mockRun.stop = true; r = null; break;
+      case 'fix_start': {
+        const seqs = args.seqs || [];
+        Object.assign(mockRun, { running: true, series: args.series, bk: args.bk, done: 0, total: seqs.length, notes: [], stop: false });
+        const sum = { total: seqs.length, ok: 0, review: 0, same: 0, fail: 0, stopped: false, error: '', requests: 0, tok_in: 0, tok_out: 0, cost: 0, secs: 0, chars: 0 };
+        const t0 = Date.now();
+        const step = (i) => {
+          if (i >= seqs.length || mockRun.stop) {
+            mockRun.running = false; sum.stopped = !!mockRun.stop; sum.secs = (Date.now() - t0) / 1000;
+            if (listeners['fix-done']) listeners['fix-done']({ payload: sum });
+            return;
+          }
+          const n = NOTES.find((x) => x.id === seqs[i]);
+          // 세 번째마다 '확인 필요'(숫자가 달라진 것처럼), 다섯 번째마다 '고칠 곳 없음'으로 흉내 낸다.
+          const state = i % 5 === 4 ? 'same' : i % 3 === 2 ? 'review' : 'ok';
+          const out = { id: n.id, series: n.comm, bk: args.bk, seq: n.id, state, change: state === 'same' ? 0 : state === 'review' ? 0.021 : 0.004, flags: state === 'review' ? 'num' : '', error: '' };
+          if (state !== 'same') mockFix[n.id] = { state: state === 'ok' ? 'on' : 'pending', text: mockFixed(n, state === 'review'), change: out.change, flags: out.flags };
+          sum[state]++; sum.requests++;
+          mockRun.done = i + 1; mockRun.notes.push(out);
+          if (listeners['fix-progress']) listeners['fix-progress']({ payload: { note: out, done: i + 1, total: seqs.length } });
+          setTimeout(() => step(i + 1), 350);
+        };
+        setTimeout(() => step(0), 350);
+        r = seqs.length;
+        break;
+      }
+      case 'fix_pair': {
+        const n = NOTES.find((x) => x.id === args.seq);
+        const f = n && mockFix[n.id];
+        r = n ? { ref: n.ref, title: n.title, orig: mockOrig(n), stale: false, fix: f ? { orig_hash: 'x', text: f.text, state: f.state, flags: f.flags, change: f.change, engine: 'codex', model: 'gpt-6-sol@low', created: '2026-11-24 10:00:00' } : null } : null;
+        break;
+      }
+      case 'fix_approve': r = 0; for (const q of args.seqs || []) if (mockFix[q]) { mockFix[q].state = 'on'; r++; } break;
+      case 'fix_discard': r = 0; for (const q of args.seqs || []) if (mockFix[q]) { delete mockFix[q]; r++; } break;
       case 'comm_series': r = [{ id: '카리스종합주석', name: '카리스 종합주석', books: [1,2,3,4,5,6,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66], have: [44] }]; break;
       case 'parse': r = PARSE; break;
       case 'lex': r = LEX[args.code] || []; break;

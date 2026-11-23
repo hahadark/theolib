@@ -1108,9 +1108,13 @@ function reRenderUserPanels(bk, ch) {
 }
 
 // 주석 한 항목을 화면 조각으로(절 범위 배지를 머리에 붙이고, 선택 절 항목은 왼쪽 색 띠).
+// AI 보정본을 보여 주는 풀이에 다는 표시(누르면 원문과 견주어 본다).
+function fixTag(n) {
+  return n.fixed ? `<button class="fixtag" data-fixs="${esc(n.comm)}" data-fixb="${n.bk}" data-fixq="${n.seq}" title="AI가 보정한 글입니다. 눌러서 원문과 견주어 보거나 되돌립니다.">AI 보정</button>` : '';
+}
 function noteHtml(n, current) {
   const band = current ? ' current' : '';
-  return `<div class="note${band}"><h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span></h4><div>${n.html}</div></div>`;
+  return `<div class="note${band}"><h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span>${fixTag(n)}</h4><div>${n.html}</div></div>`;
 }
 
 // 주석 목록을 대표 1개 / 다른 해설 / 장 단위 개요 3층으로 가른다.
@@ -1181,7 +1185,7 @@ function commItemHtml(n) {
   const single = sk != null && ek === sk && sk % 1000 > 0;
   const anchor = single ? ` data-anchor="${sk % 1000}" id="comm-v-${sk % 1000}"` : '';
   return `<div class="note cnote" data-sk="${sk == null ? '' : sk}" data-ek="${ek == null ? '' : ek}"${anchor}>` +
-    `<h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)}</h4><div>${n.html}</div></div>`;
+    `<h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)}${fixTag(n)}</h4><div>${n.html}</div></div>`;
 }
 
 // 선택한 절의 해설 위치로 스크롤하고 잠깐 강조한다(패널 다시 그리지 않음).
@@ -1238,8 +1242,11 @@ function renderComm(panel) {
     const tabs = comms.map((c) => `<button class="${!multi && c === cur ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('') +
       (whole && comms.length > 1 ? `<button class="${multi ? 'on' : ''}" data-multi="1" title="모든 주석을 절 순서대로 이어서 보기">이어 보기</button>` : '');
     const cvBtn = (m, label) => `<button data-cv="${m}" class="${(whole ? m === 'chap' : m === 'verse') ? 'on' : ''}">${label}</button>`;
+    // 글로 된 주석(차례가 있는 풀이)만 AI 보정을 할 수 있다. 매튜헨리처럼 html 로 받은 것은 뺀다.
+    const fixable = comms.filter((name) => notes.some((n) => n.comm_name === name && n.seq >= 0)).map((name) => ({ id: commCode.get(name), name }));
+    const fixBtn = fixable.length ? `<button class="fixbtn" data-fix="1" title="AI로 주석 글의 줄바꿈·띄어쓰기·글자 오류 바로잡기">${ic('sparkles', 13)}보정</button>` : '';
     const top = comms.length
-      ? `<div class="comm-top"><div class="subtabs">${tabs}</div><div class="cv">${cvBtn('verse', '절')}${cvBtn('chap', '장 전체')}</div></div>`
+      ? `<div class="comm-top"><div class="subtabs">${tabs}</div><div class="comm-tools">${fixBtn}<div class="cv">${cvBtn('verse', '절')}${cvBtn('chap', '장 전체')}</div></div></div>`
       : '';
     let body = '';
     if (whole) {
@@ -1263,7 +1270,10 @@ function renderComm(panel) {
     if (top0) top0.onclick = (ev) => {
       const b = ev.target.closest('button');
       if (!b) return;
-      if (b.dataset.cv) {
+      if (b.dataset.fix) {
+        const mine = fixable.find((s) => s.name === cur) || fixable[0];
+        if (window.NoteFix && mine) NoteFix.open(panel, { series: mine.id, seriesList: fixable, bk: ref.bk, ch: ref.ch });
+      } else if (b.dataset.cv) {
         const want = b.dataset.cv === 'chap';
         if ((panel.settings.chapview !== false) === want) return;
         panel.settings.chapview = want; panel.saveSettings(); panel._commQk = null;
@@ -1276,7 +1286,11 @@ function renderComm(panel) {
         Layout.refreshPanelMeta(panel.id); renderComm(panel);
       }
     };
-    el.querySelector('.notes').onclick = (ev) => { const a = ev.target.closest('a.sc'); if (a) showLex(a.dataset.c, panel); };
+    el.querySelector('.notes').onclick = (ev) => {
+      const f = ev.target.closest('.fixtag');
+      if (f) { if (window.NoteFix) NoteFix.compare(panel, { series: f.dataset.fixs, bk: +f.dataset.fixb, seq: +f.dataset.fixq }); return; }
+      const a = ev.target.closest('a.sc'); if (a) showLex(a.dataset.c, panel);
+    };
     panel._commQk = qk;
     Layout.refreshPanelMeta(panel.id);
     if (whole) requestAnimationFrame(() => commScroll(panel, panelRef(panel)));

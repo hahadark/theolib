@@ -202,10 +202,16 @@ pub fn chat_raw(
     if is_deepseek(url) {
         body["max_tokens"] = json!(32000);
     }
+    chat_body(url, key, &body, timeout_s)
+}
+
+/// 요청 본문을 직접 만들어 보내는 chat/completions 한 번(온도·생각 끄기 같은 칸을 더할 때 쓴다).
+/// 재시도와 오류 문구는 `chat_raw` 와 같다.
+pub fn chat_body(url: &str, key: &str, body: &Value, timeout_s: u64) -> Result<ChatOut, String> {
     let waits = retry_waits();
     let mut last_err = String::new();
     for attempt in 0..=waits.len() {
-        match do_post(url, key, &body, timeout_s) {
+        match do_post(url, key, body, timeout_s) {
             Ok(mut r) => {
                 let status = r.status().as_u16();
                 let text = read_body(&mut r);

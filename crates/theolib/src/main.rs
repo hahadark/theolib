@@ -48,6 +48,45 @@ enum Cmd {
         #[command(subcommand)]
         c: StudyCmd,
     },
+    /// 주석 글 AI 보정(목록·실행·견본 시험·되돌리기)
+    Fix {
+        #[command(subcommand)]
+        c: FixCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum FixCmd {
+    /// 범위의 풀이 목록: list <시리즈 id> <책> <장> [--to 끝 장]
+    List { series: String, bk: String, ch: i64, #[arg(long)] to: Option<i64> },
+    /// 범위를 보정해 notefix.db 에 적는다(받은 자료는 고치지 않는다)
+    Run {
+        series: String,
+        bk: String,
+        ch: i64,
+        #[arg(long)]
+        to: Option<i64>,
+        #[arg(long)]
+        engine: String,
+        #[arg(long, default_value = "")]
+        model: String,
+        #[arg(long, default_value_t = 3)]
+        workers: usize,
+    },
+    /// 견본 파일(JSON 배열 [{id, text}])을 보정해 결과 파일을 쓴다(아무것도 저장하지 않는다)
+    Bench {
+        file: String,
+        #[arg(long)]
+        engine: String,
+        #[arg(long, default_value = "")]
+        model: String,
+        #[arg(long)]
+        out: String,
+        #[arg(long, default_value_t = 3)]
+        workers: usize,
+    },
+    /// 범위의 보정본을 지워 원문으로 되돌린다
+    Discard { series: String, bk: String, ch: i64, #[arg(long)] to: Option<i64> },
 }
 
 #[derive(Subcommand)]
@@ -187,6 +226,7 @@ fn main() -> Result<()> {
         Cmd::Web { c } => cmd_web(&home, c)?,
         Cmd::Mcp { c } => cmd_mcp(&home, c)?,
         Cmd::Study { c } => cmd_study(&home, c)?,
+        Cmd::Fix { c } => cmd_fix(&home, c)?,
         Cmd::Index => {
             let mut p = progress();
             search::build_index(&home, &mut p)?;
@@ -323,6 +363,69 @@ fn cmd_mcp(home: &Home, c: McpCmd) -> Result<()> {
                     println!("{n}");
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_fix(home: &Home, c: FixCmd) -> Result<()> {
+    use std::sync::atomic::AtomicBool;
+    use theolib_core::fix;
+    let range = |ch: i64, to: Option<i64>| (ch * 1000, to.unwrap_or(ch) * 1000 + 999);
+    let book = |bk: &str| Reader::open(home)?.resolve_book(bk);
+    let print = |s: &fix::Summary| {
+        println!(
+            "풀이 {}개: 적용 {} · 확인 필요 {} · 고칠 곳 없음 {} · 실패 {}{} | 요청 {}번, {:.0}초, 글자 {}, 토큰 입력 {} 출력 {}{}",
+            s.total,
+            s.ok,
+            s.review,
+            s.same,
+            s.fail,
+            if s.stopped { " (멈춤)" } else { "" },
+            s.requests,
+            s.secs,
+            s.chars,
+            s.tok_in,
+            s.tok_out,
+            if s.error.is_empty() { String::new() } else { format!(" | 오류: {}", s.error) }
+        );
+    };
+    match c {
+        FixCmd::List { series, bk, ch, to } => {
+            let (lo, hi) = range(ch, to);
+            for t in fix::targets(home, &series, book(&bk)?, lo, hi)? {
+                println!("{:>5} {:>7}자 {:8} {} | {}", t.seq, t.chars, if t.fix.is_empty() { "-" } else { &t.fix }, t.r#ref, t.title.chars().take(40).collect::<String>());
+            }
+        }
+        FixCmd::Run { series, bk, ch, to, engine, model, workers } => {
+            let (lo, hi) = range(ch, to);
+            let b = book(&bk)?;
+            let seqs: Vec<i64> = fix::targets(home, &series, b, lo, hi)?.into_iter().filter(|t| t.start_key >= lo && t.start_key <= hi).map(|t| t.seq).collect();
+            let jobs = fix::jobs_for(home, &series, b, &seqs)?;
+            let ai = fix::make_ai(home, &engine, &model).map_err(anyhow::Error::msg)?;
+            let on = |o: &fix::NoteOut, done: usize, total: usize| println!("[{done}/{total}] {} {} {:.1}% {} {}", o.seq, o.state, o.change * 100.0, o.flags, o.error);
+            print(&fix::run(home, &jobs, ai.as_ref(), &engine, &model, workers, &on, &AtomicBool::new(false))?);
+        }
+        FixCmd::Bench { file, engine, model, out, workers } => {
+            let src: Vec<serde_json::Value> = serde_json::from_slice(&std::fs::read(&file)?)?;
+            let jobs: Vec<fix::Job> = src.iter().enumerate().map(|(i, v)| fix::Job { id: i as i64, series: "bench".into(), bk: 0, seq: i as i64, text: v["text"].as_str().unwrap_or("").to_string() }).collect();
+            let ai = fix::make_ai(home, &engine, &model).map_err(anyhow::Error::msg)?;
+            let rows = std::sync::Mutex::new(Vec::new());
+            let sink = |j: &fix::Job, o: &fix::NoteOut, text: Option<&str>, done: usize, total: usize| {
+                println!("[{done}/{total}] {} {} {:.1}% {} {}", src[j.seq as usize]["id"], o.state, o.change * 100.0, o.flags, o.error);
+                rows.lock().unwrap().push(serde_json::json!({"id": src[j.seq as usize]["id"], "n": j.seq, "state": o.state, "change": o.change, "flags": o.flags, "error": o.error, "text": text}));
+            };
+            let s = fix::process(&jobs, ai.as_ref(), workers, &sink, &AtomicBool::new(false));
+            print(&s);
+            let mut rows = rows.into_inner().unwrap();
+            rows.sort_by_key(|r| r["n"].as_i64().unwrap_or(0));
+            std::fs::write(&out, serde_json::to_vec_pretty(&serde_json::json!({"engine": engine, "model": model, "summary": s, "notes": rows}))?)?;
+        }
+        FixCmd::Discard { series, bk, ch, to } => {
+            let (lo, hi) = range(ch, to);
+            let b = book(&bk)?;
+            let seqs: Vec<i64> = fix::targets(home, &series, b, lo, hi)?.into_iter().filter(|t| !t.fix.is_empty()).map(|t| t.seq).collect();
+            println!("보정본 {}개를 지웠습니다", fix::discard(home, &series, b, &seqs)?);
         }
     }
     Ok(())

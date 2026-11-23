@@ -1579,6 +1579,156 @@ fn quick_test_codex(path: &Path, prompt: &str) -> Result<String, String> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 한 번 묻고 답 받기(도구·MCP 없음). 주석 글 보정처럼 글만 주고받는 일에 쓴다.
+// ---------------------------------------------------------------------------
+
+/// 한 번 실행한 결과.
+#[derive(Clone, Debug, Default)]
+pub struct OneShot {
+    pub text: String,
+    pub tok_in: u64,
+    pub tok_out: u64,
+    /// 클로드가 알려 주는 환산 금액(구독에서는 실제로 청구되지 않는다).
+    pub cost: Option<f64>,
+}
+
+/// 클로드 Code 의 긴 기본 지시문 대신 넣는 짧은 지시문(실제 지시는 stdin 글에 있다).
+const ONE_SHOT_SYSTEM: &str = "You are a careful text proofreader. Follow the instructions in the user message exactly and reply with the requested text only.";
+
+/// 자식 프로세스를 돌려 stdout·stderr 를 모은다. 긴 글에서 서로 막히지 않게 stdin 은 따로 쓴다.
+fn run_collect(mut cmd: Command, stdin_text: &str, timeout_s: u64, cancel: &AtomicBool, name: &str) -> Result<(String, String), String> {
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    apply_no_window(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| format!("{name}를 실행할 수 없습니다: {e}"))?;
+    if let Some(mut si) = child.stdin.take() {
+        let t = stdin_text.to_string();
+        thread::spawn(move || {
+            let _ = si.write_all(t.as_bytes());
+            let _ = si.flush();
+        });
+    }
+    let out_rx = child.stdout.take().map(spawn_line_reader);
+    let err_rx = child.stderr.take().map(spawn_line_reader);
+    let (mut out, mut err): (Vec<String>, Vec<String>) = (vec![], vec![]);
+    let started = Instant::now();
+    loop {
+        if let Some(rx) = &out_rx {
+            while let Ok(l) = rx.try_recv() {
+                out.push(l);
+            }
+        }
+        if let Some(rx) = &err_rx {
+            while let Ok(l) = rx.try_recv() {
+                err.push(l);
+            }
+        }
+        if cancel.load(Ordering::Relaxed) {
+            kill_tree(child.id());
+            let _ = child.wait();
+            return Err("멈췄습니다.".into());
+        }
+        if started.elapsed() > Duration::from_secs(timeout_s) {
+            kill_tree(child.id());
+            let _ = child.wait();
+            return Err("시간이 초과되었습니다.".into());
+        }
+        if !child_running(&mut child) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    let _ = child.wait();
+    for (rx, buf) in [(&out_rx, &mut out), (&err_rx, &mut err)] {
+        if let Some(rx) = rx {
+            while let Ok(l) = rx.recv_timeout(Duration::from_millis(800)) {
+                buf.push(l);
+            }
+        }
+    }
+    Ok((out.join("\n"), err.join("\n")))
+}
+
+fn u64_at(v: &Value, k: &str) -> u64 {
+    v.get(k).and_then(Value::as_u64).unwrap_or(0)
+}
+
+/// 답이 비었을 때의 오류 문장(한도·로그인 구분).
+fn empty_answer_err(stdout: &str, stderr: &str) -> String {
+    if looks_like_limit(stderr) || looks_like_limit(stdout) {
+        return "사용 한도에 걸렸습니다.".into();
+    }
+    let tail = stderr_tail(&stderr.lines().map(str::to_string).collect::<Vec<_>>());
+    if tail.trim().is_empty() { not_logged_in_msg() } else { format!("답을 받지 못했습니다. {}", truncate_chars(tail.trim(), 300)) }
+}
+
+/// 구독 CLI 에 글 하나를 주고 답 하나를 받는다(도구·MCP 없음).
+/// `effort` 는 추론 강도(빈 문자열이면 클로드는 기본값, 코덱스는 low).
+pub fn one_shot(info: &CliInfo, model: &str, effort: &str, prompt: &str, timeout_s: u64, cancel: &AtomicBool) -> Result<OneShot, String> {
+    if !info.found || info.path.is_empty() {
+        return Err(format!("이 PC에 {} 가 설치되어 있지 않습니다.", if info.id == "claude" { "Claude Code CLI" } else { "Codex CLI" }));
+    }
+    let path = PathBuf::from(&info.path);
+    let work_dir = std::env::temp_dir();
+    if info.id == "claude" {
+        let mut cmd = new_command(&path);
+        cmd.arg("-p").arg("--model").arg(model).arg("--tools").arg("").arg("--strict-mcp-config").arg("--disable-slash-commands");
+        cmd.arg("--system-prompt").arg(ONE_SHOT_SYSTEM).arg("--output-format").arg("json").arg("--max-turns").arg("1");
+        if !effort.is_empty() {
+            cmd.arg("--effort").arg(effort);
+        }
+        cmd.env_remove("ANTHROPIC_API_KEY");
+        cmd.env_remove("PYTHONHOME");
+        cmd.current_dir(&work_dir);
+        let (out, err) = run_collect(cmd, prompt, timeout_s, cancel, "클로드")?;
+        let v: Value = serde_json::from_str(out.trim()).unwrap_or(Value::Null);
+        let text = v.get("result").and_then(Value::as_str).unwrap_or("").to_string();
+        if v.get("is_error").and_then(Value::as_bool).unwrap_or(false) {
+            if looks_like_limit(&text) || looks_like_limit(&err) {
+                return Err("사용 한도에 걸렸습니다.".into());
+            }
+            return Err(if text.trim().is_empty() { empty_answer_err(&out, &err) } else { truncate_chars(text.trim(), 300) });
+        }
+        if text.trim().is_empty() {
+            return Err(empty_answer_err(&out, &err));
+        }
+        let u = v.get("usage").cloned().unwrap_or(Value::Null);
+        return Ok(OneShot {
+            text,
+            tok_in: u64_at(&u, "input_tokens") + u64_at(&u, "cache_read_input_tokens") + u64_at(&u, "cache_creation_input_tokens"),
+            tok_out: u64_at(&u, "output_tokens"),
+            cost: v.get("total_cost_usd").and_then(Value::as_f64),
+        });
+    }
+    let out_file = work_dir.join(format!("codex-one-{}.txt", rand_hex(8)));
+    let mut cmd = new_command(&path);
+    cmd.arg("exec").arg("--ignore-user-config").arg("--skip-git-repo-check").arg("--ephemeral").arg("-s").arg("read-only");
+    cmd.arg("-m").arg(model).arg("-c").arg(format!("model_reasoning_effort={}", if effort.is_empty() { "low" } else { effort }));
+    cmd.arg("--json").arg("-o").arg(&out_file).arg("-");
+    cmd.env_remove("OPENAI_API_KEY");
+    cmd.env_remove("PYTHONHOME");
+    cmd.current_dir(&work_dir);
+    let res = run_collect(cmd, prompt, timeout_s, cancel, "코덱스");
+    let text = fs::read_to_string(&out_file).unwrap_or_default();
+    let _ = fs::remove_file(&out_file);
+    let (out, err) = res?;
+    if text.trim().is_empty() {
+        return Err(empty_answer_err(&out, &err));
+    }
+    let (mut tok_in, mut tok_out) = (0, 0);
+    for line in out.lines() {
+        if let Ok(ev) = serde_json::from_str::<Value>(line) {
+            if let Some(u) = ev.get("usage") {
+                tok_in = u64_at(u, "input_tokens");
+                tok_out = u64_at(u, "output_tokens");
+            }
+        }
+    }
+    Ok(OneShot { text, tok_in, tok_out, cost: None })
+}
+
 fn not_logged_in_msg() -> String {
     "로그인이 필요합니다. [로그인 창 열기]를 눌러 로그인해 주세요.".into()
 }
