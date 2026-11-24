@@ -4,7 +4,8 @@ use serde::Serialize;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
-use theolib_core::{Home, fix, study};
+use std::collections::HashSet;
+use theolib_core::{Home, fix, study, studycli, web};
 
 type R<T> = Result<T, String>;
 fn e<E: std::fmt::Display>(x: E) -> String {
@@ -38,6 +39,107 @@ struct ProgressEv {
     total: usize,
 }
 
+#[derive(Serialize, Clone)]
+struct DoneEv {
+    #[serde(flatten)]
+    sum: fix::Summary,
+    /// 서재에 올린 결과
+    share: fix::SyncOut,
+}
+
+#[derive(Serialize, Clone)]
+struct SyncedEv {
+    bk: i64,
+    changed: usize,
+}
+
+static PULLING: Mutex<Option<HashSet<i64>>> = Mutex::new(None);
+
+/// 주석을 열 때 뒤에서 조용히 부른다: 남은 올릴 것을 올리고, 그 책의 서재 보정본이 바뀌었으면 받아 온다.
+/// 받아서 바뀐 것이 있으면 `fix-synced` 로 알려 주석 창을 다시 그리게 한다. 책마다 5분에 한 번만 묻는다.
+pub fn kick_pull(app: &AppHandle, bk: i64) {
+    {
+        let mut g = PULLING.lock().unwrap();
+        if !g.get_or_insert_with(HashSet::new).insert(bk) {
+            return;
+        }
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let done = || {
+            if let Some(s) = PULLING.lock().unwrap().as_mut() {
+                s.remove(&bk);
+            }
+        };
+        let Ok(h) = Home::default_location() else { return done() };
+        if !web::status(&h).logged_in {
+            return done();
+        }
+        let net = fix::WebNet(&h);
+        if fix::has_pending_push(&h) {
+            let _ = fix::push(&h, &net);
+        }
+        if let Ok(n) = fix::pull_if_stale(&h, &net, bk, 300) {
+            if n > 0 {
+                let _ = app.emit("fix-synced", SyncedEv { bk, changed: n });
+            }
+        }
+        done();
+    });
+}
+
+/// 보정에 쓸 수 있는 이 PC의 AI(구독 CLI 가 깔려 있거나 API 키가 저장된 것). 계정 등급과 상관없이 보여 준다.
+#[derive(Serialize, Clone)]
+pub struct FixEngine {
+    id: String,
+    name: String,
+    kind: String,
+    models: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn fix_engines() -> R<Vec<FixEngine>> {
+    let h = home()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut out = vec![];
+        for (id, name) in [("codex", "챗GPT 구독"), ("claude", "클로드 구독")] {
+            if studycli::detect(id).found {
+                out.push(FixEngine { id: id.into(), name: name.into(), kind: "cli".into(), models: vec![] });
+            }
+        }
+        let keys = study::keys::saved(&h);
+        for e in study::llm::engines() {
+            if keys.contains_key(&e.id) {
+                out.push(FixEngine { id: e.id.clone(), name: e.name.to_string(), kind: "api".into(), models: e.models.iter().map(|m| m.to_string()).collect() });
+            }
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(e)?
+}
+
+/// 지금 바로 서재와 맞춘다(남은 것 올리기 + 그 책 받기). 보정 창을 열 때 부른다.
+#[tauri::command]
+pub async fn fix_sync(bk: i64) -> R<fix::SyncOut> {
+    let h = home()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        if !web::status(&h).logged_in {
+            return Ok(fix::SyncOut { error: "로그인하면 보정본을 서재와 나눕니다.".into(), ..Default::default() });
+        }
+        let net = fix::WebNet(&h);
+        let mut out = fix::push(&h, &net);
+        match fix::pull(&h, &net, bk) {
+            Ok(n) => out.pulled = n,
+            Err(x) if out.error.is_empty() => out.error = x.to_string(),
+            Err(_) => {}
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(e)?
+}
+
 #[tauri::command]
 pub async fn fix_targets(series: String, bk: i64, lo: i64, hi: i64) -> R<Vec<fix::Target>> {
     let h = home()?;
@@ -61,9 +163,9 @@ pub async fn fix_start(app: AppHandle, series: String, bk: i64, seqs: Vec<i64>, 
         if RUN.lock().unwrap().as_ref().is_some_and(|r| r.running) {
             return Err("이미 보정하고 있습니다. 끝난 뒤에 다시 해 주세요.".to_string());
         }
-        // 이 PC의 AI(API 키·구독 CLI)를 쓰는 일이라 AI 본문연구와 같은 권한 규칙을 따른다.
-        if study::access::rejects_local(&study::access::scope(&h)) {
-            return Err("이 계정으로는 이 PC의 AI를 쓸 수 없습니다. 관리자 계정으로 로그인해 주세요.".to_string());
+        // 받은 주석 글을 이 PC의 AI로 고치는 일이라 회원도 쓸 수 있다(AI 본문연구와 달리 서재 전문을 읽지 않는다). 게스트만 막는다.
+        if matches!(study::access::scope(&h), study::access::Scope::Guest) {
+            return Err("게스트 계정으로는 주석 글을 보정할 수 없습니다. 회원으로 로그인해 주세요.".to_string());
         }
         let jobs = fix::jobs_for(&h, &series, bk, &seqs).map_err(e)?;
         if jobs.is_empty() {
@@ -87,11 +189,13 @@ pub async fn fix_start(app: AppHandle, series: String, bk: i64, seqs: Vec<i64>, 
                 Ok(s) => s,
                 Err(x) => fix::Summary { total, error: x.to_string(), ..Default::default() },
             };
+            // 바로 적용된 보정본은 서재에 올려 다른 사용자와 나눈다(로그인했을 때만. 실패하면 다음에 다시 올린다).
+            let share = if web::status(&h).logged_in { fix::push(&h, &fix::WebNet(&h)) } else { fix::SyncOut::default() };
             if let Some(r) = RUN.lock().unwrap().as_mut() {
                 r.running = false;
                 r.summary = Some(sum.clone());
             }
-            let _ = app.emit("fix-done", sum);
+            let _ = app.emit("fix-done", DoneEv { sum, share });
         });
         Ok(total)
     })
@@ -108,11 +212,32 @@ pub async fn fix_pair(series: String, bk: i64, seq: i64) -> R<Option<fix::Pair>>
 #[tauri::command]
 pub async fn fix_approve(series: String, bk: i64, seqs: Vec<i64>) -> R<usize> {
     let h = home()?;
-    tauri::async_runtime::spawn_blocking(move || fix::approve(&h, &series, bk, &seqs).map_err(e)).await.map_err(e)?
+    tauri::async_runtime::spawn_blocking(move || {
+        let n = fix::approve(&h, &series, bk, &seqs).map_err(e)?;
+        push_later(h);
+        Ok(n)
+    })
+    .await
+    .map_err(e)?
 }
 
 #[tauri::command]
 pub async fn fix_discard(series: String, bk: i64, seqs: Vec<i64>) -> R<usize> {
     let h = home()?;
-    tauri::async_runtime::spawn_blocking(move || fix::discard(&h, &series, bk, &seqs).map_err(e)).await.map_err(e)?
+    tauri::async_runtime::spawn_blocking(move || {
+        let n = fix::discard(&h, &series, bk, &seqs).map_err(e)?;
+        push_later(h);
+        Ok(n)
+    })
+    .await
+    .map_err(e)?
+}
+
+/// 적용하거나 되돌린 것을 뒤에서 서재에 알린다(실패하면 다음에 주석을 열 때 다시 한다).
+fn push_later(h: Home) {
+    std::thread::spawn(move || {
+        if fix::has_pending_push(&h) && web::status(&h).logged_in {
+            let _ = fix::push(&h, &fix::WebNet(&h));
+        }
+    });
 }

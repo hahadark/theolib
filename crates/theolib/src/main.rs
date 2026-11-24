@@ -87,6 +87,8 @@ enum FixCmd {
     },
     /// 범위의 보정본을 지워 원문으로 되돌린다
     Discard { series: String, bk: String, ch: i64, #[arg(long)] to: Option<i64> },
+    /// 서재와 맞춘다: 켜져 있는 내 보정본을 올리고, 그 책에서 다른 사용자가 올린 것을 받는다
+    Sync { bk: String },
 }
 
 #[derive(Subcommand)]
@@ -420,6 +422,13 @@ fn cmd_fix(home: &Home, c: FixCmd) -> Result<()> {
             let mut rows = rows.into_inner().unwrap();
             rows.sort_by_key(|r| r["n"].as_i64().unwrap_or(0));
             std::fs::write(&out, serde_json::to_vec_pretty(&serde_json::json!({"engine": engine, "model": model, "summary": s, "notes": rows}))?)?;
+        }
+        FixCmd::Sync { bk } => {
+            let b = book(&bk)?;
+            let net = fix::WebNet(home);
+            let p = fix::push(home, &net);
+            println!("올림 {} · 서재가 받지 않음 {} · 내림 {}{}", p.sent, p.rejected, p.removed, if p.error.is_empty() { String::new() } else { format!(" | 오류: {}", p.error) });
+            println!("받아서 바뀐 것 {}개", fix::pull(home, &net, b)?);
         }
         FixCmd::Discard { series, bk, ch, to } => {
             let (lo, hi) = range(ch, to);

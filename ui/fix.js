@@ -1,6 +1,7 @@
 /* fix.js — 주석 글 AI 보정 창.
    주석 패널의 [보정] 단추로 연다. 처음에는 지금 보는 장이 골라져 있고, 범위(장·절)와 풀이를 바꿔 고를 수 있다.
    보정본은 받은 자료를 고치지 않고 따로 보관되므로 언제든 원문으로 되돌릴 수 있다.
+   적용된 보정본은 서재에 올라가 다른 사용자와 함께 쓰고, 다른 사용자가 올린 보정본도 받아 합친다(서재가 풀이마다 하나를 정해 준다).
    숫자가 달라졌거나 많이 바뀐 풀이는 바로 적용하지 않고, 원문과 견주어 본 뒤 적용한다.
    바깥에 내놓는 것은 window.NoteFix = { open, compare } 뿐이다. app.js 의 state·bookName·esc·ic·invalidateCache 를 쓴다. */
 (function () {
@@ -20,7 +21,15 @@
   // 1초에 처리하는 글자 수(견본 시험에서 잰 값, 예상 시간 안내용).
   const SPEED = { codex: 240, claude: 42, deepseek: 900 };
   const FLAG = { num: '숫자가 달라짐', big: '많이 바뀜', script: '원어 글자가 새로 들어감', md: '기호가 들어감', part: '일부는 원문 그대로' };
-  const STATE = { on: '보정됨', ok: '보정됨', pending: '확인 필요', review: '확인 필요', same: '고칠 곳 없음', fail: '원문 유지', stale: '원문이 바뀜' };
+  const STATE = { on: '보정됨', ok: '보정됨', pending: '확인 필요', review: '확인 필요', same: '고칠 곳 없음', fail: '원문 유지', stale: '원문이 바뀜', off: '꺼 둠' };
+  // 목록에 적는 상태 말: 서재에서 받은 것, 내가 올린 것, 서재가 받지 않은 것을 가른다.
+  function stateLabel(t) {
+    const st = t.fix || '';
+    if (st === 'on' && t.origin === 'server') return '서재 보정본';
+    if (st === 'on' && t.up === 1) return '보정됨 · 서재에 올림';
+    if (st === 'on' && t.up === 2) return '보정됨 · 이 PC만';
+    return STATE[st] || '';
+  }
 
   const $ = (s, r) => (r || document).querySelector(s);
   const tauri = () => window.__TAURI__;
@@ -85,12 +94,12 @@
 
   // ---- 목록 화면
   async function open(panel, o) {
-    Object.assign(S, { panel, series: o.series, seriesList: o.seriesList || [], bk: o.bk, list: [], picked: new Set(), summary: null, anchor: null, running: false, done: 0, total: 0, drag: null });
+    Object.assign(S, { panel, series: o.series, seriesList: o.seriesList || [], bk: o.bk, list: [], picked: new Set(), summary: null, anchor: null, running: false, done: 0, total: 0, drag: null, touched: false });
     const el = shell('주석 글 AI 보정', '', false);
     const b = state.books.find((x) => x.n === o.bk) || { ch: 1 };
     const chOpts = (sel) => Array.from({ length: b.ch }, (_, i) => `<option value="${i + 1}"${i + 1 === sel ? ' selected' : ''}>${i + 1}장</option>`).join('');
     const sOpts = S.seriesList.map((s) => `<option value="${esc(s.id)}"${s.id === o.series ? ' selected' : ''}>${esc(s.name)}</option>`).join('');
-    $('.fx-body', el).innerHTML = '<p class="fx-lead">줄바꿈과 문단, 띄어쓰기, 분명한 글자 오류만 바로잡습니다. 원문은 그대로 보관되어 언제든 되돌릴 수 있습니다.</p>'
+    $('.fx-body', el).innerHTML = '<p class="fx-lead">줄바꿈과 문단, 띄어쓰기, 분명한 글자 오류만 바로잡습니다. 원문은 그대로 보관되어 언제든 되돌릴 수 있고, 적용된 보정본은 서재에 올라가 다른 사용자와 함께 씁니다.</p>'
       + '<div class="fx-range">'
       + `<label class="fx-f"><span>주석</span><select class="fx-series">${sOpts}</select></label>`
       + `<label class="fx-f"><span>범위</span><span class="fx-span"><b>${esc(bookName(o.bk))}</b>`
@@ -121,6 +130,12 @@
     S.unlisten.push(await tauri().event.listen('fix-done', (ev) => onDone(ev.payload)));
     loadEngines();
     await loadList(true);
+    // 서재와 맞춘다(남은 것 올리기 + 이 책에서 다른 사용자가 올린 것 받기). 바뀐 것이 있으면 목록과 주석 창을 다시 그린다.
+    call('fix_sync', { bk: S.bk }).then((r) => {
+      if (S.el !== el || !r || S.running) return;
+      if (r.pulled) refreshPanels();
+      if (r.pulled || r.sent || r.rejected || r.removed) loadList(!S.touched);
+    }).catch(() => {});
     // 창을 닫았다 다시 열었을 때 돌고 있던 작업을 이어서 보여 준다.
     const st = await call('fix_state').catch(() => null);
     if (st && st.running && st.series === S.series && st.bk === S.bk) {
@@ -136,14 +151,14 @@
   }
 
   async function loadEngines() {
-    const list = await call('ai_engines').catch(() => []);
-    S.engines = list.filter((e) => (e.kind === 'api' || e.kind === 'cli') && e.id !== 'custom' && e.allowed && e.ready);
+    // 이 PC에 깔려 있는 구독 명령줄 도구와 저장된 API 키(계정 등급과 상관없이 회원도 쓴다).
+    S.engines = await call('fix_engines').catch(() => []);
     const sel = S.el && $('.fx-engine', S.el);
     if (!sel) return;
     if (!S.engines.length) {
       sel.innerHTML = '<option value="">쓸 수 있는 AI가 없습니다</option>';
       sel.disabled = true; $('.fx-go', S.el).disabled = true;
-      say('설정의 AI 갈래에서 이 PC의 AI(구독 또는 API 키)를 먼저 연결해 주세요. 관리자 계정에서만 쓸 수 있습니다.', true);
+      say('이 PC에 보정에 쓸 AI가 없습니다. 챗GPT(Codex)나 클로드 Code 명령줄 도구를 설치해 로그인하거나, 설정의 AI 갈래에서 API 키를 넣어 주세요. 다른 사용자가 올린 보정본은 그대로 받아 봅니다.', true);
       return;
     }
     const sorted = [...S.engines].sort((a, b) => ((PREFER.indexOf(a.id) + 99) % 99) - ((PREFER.indexOf(b.id) + 99) % 99));
@@ -167,6 +182,8 @@
     S.want = want;
     const list = await call('fix_targets', { series: S.series, bk: S.bk, lo: S.lo, hi: S.hi }).catch((x) => { say(String(x), true); return []; });
     if (S.el !== el || S.want !== want) return;
+    // 방금 돌린 결과 가운데 저장되지 않는 것(고칠 곳 없음·원문 유지)은 목록을 다시 받아도 그대로 보여 준다.
+    for (const t of list) { const k = S.kept && S.kept.get(S.series + '|' + t.seq); if (k && !t.fix) Object.assign(t, k); }
     S.list = list;
     // 처음에는 이 범위에서 시작하는 풀이 가운데 아직 보정하지 않은 것을 고른다(앞 장부터 이어지는 큰 단락·서론은 빼 둔다).
     if (repick) S.picked = new Set(list.filter((t) => t.chars > 0 && t.start_key >= S.lo && t.start_key <= S.hi && !t.fix).map((t) => t.seq));
@@ -176,13 +193,13 @@
   function rowHtml(t) {
     const st = t.fix || '';
     const cls = st === 'on' || st === 'ok' ? 'ok' : st === 'pending' || st === 'review' ? 'warn' : st === 'fail' ? 'err' : '';
-    const tip = [flagsText(t.flags), t.error].filter(Boolean).join(' · ');
-    const canCmp = st === 'on' || st === 'ok' || st === 'pending' || st === 'review';
+    const tip = [t.origin === 'server' && t.who ? `올린 이: ${t.who}` : '', flagsText(t.flags), t.error, t.up === 2 ? `서재가 받지 않음: ${t.msg || ''}` : ''].filter(Boolean).join(' · ');
+    const canCmp = st === 'on' || st === 'ok' || st === 'pending' || st === 'review' || st === 'off';
     return `<div class="fx-row${S.picked.has(t.seq) ? ' on' : ''}${t.chars ? '' : ' empty'}" data-seq="${t.seq}">`
       + `<input type="checkbox" tabindex="-1"${S.picked.has(t.seq) ? ' checked' : ''}${t.chars ? '' : ' disabled'}>`
       + `<span class="cr">${esc(range(t))}</span><span class="fx-title">${esc(t.title || t.ref || '')}</span>`
       + `<span class="fx-len">${num(t.chars)}자</span>`
-      + `<span class="fx-st ${cls}"${tip ? ` title="${esc(tip)}"` : ''}>${t.busy ? '보정 중…' : esc(STATE[st] || '')}${st && t.change ? ` <i>${(t.change * 100).toFixed(1)}%</i>` : ''}</span>`
+      + `<span class="fx-st ${cls}"${tip ? ` title="${esc(tip)}"` : ''}>${t.busy ? '보정 중…' : esc(stateLabel(t))}${st && t.change ? ` <i>${(t.change * 100).toFixed(1)}%</i>` : ''}</span>`
       + `<button class="btn btn-quiet fx-cmp"${canCmp ? '' : ' disabled'} title="원문과 견주어 보기">비교</button></div>`;
   }
 
@@ -237,6 +254,7 @@
         S.anchor = seq;
         S.drag = { on };
       }
+      S.touched = true;
       paintCount();
     });
     box.addEventListener('mouseover', (ev) => {
@@ -258,7 +276,7 @@
   function mark(n) {
     const t = S.list.find((x) => x.seq === n.seq);
     if (!t) return;
-    Object.assign(t, { fix: n.state, change: n.change, flags: n.flags, error: n.error, busy: false });
+    Object.assign(t, { fix: n.state, change: n.change, flags: n.flags, error: n.error, busy: false, origin: 'me', up: 0, who: '', msg: '' });
     S.picked.delete(n.seq);
   }
 
@@ -302,13 +320,21 @@
     if (!S.el) return;
     S.running = false; S.summary = sum;
     for (const t of S.list) t.busy = false;
+    S.kept = S.kept || new Map();
+    for (const t of S.list) if (t.fix === 'same' || t.fix === 'fail') S.kept.set(S.series + '|' + t.seq, { fix: t.fix, error: t.error || '' });
+    const why = [...new Set(S.list.filter((t) => t.fix === 'fail' && t.error).map((t) => t.error))].slice(0, 2).join(', ');
     paintList(); paintRun();
     const parts = [`보정 ${sum.ok}개`, sum.review ? `확인 필요 ${sum.review}개` : '', sum.same ? `고칠 곳 없음 ${sum.same}개` : '', sum.fail ? `원문 유지 ${sum.fail}개` : ''].filter(Boolean).join(' · ');
     $('.fx-progtext', S.el).textContent = `${sum.stopped ? '멈춤' : '끝'} · ${parts} · ${Math.round(sum.secs)}초`;
+    const sh = sum.share || {};
+    const shared = sh.sent ? ` ${sh.sent}개를 서재에 올려 다른 사용자와 나눕니다.` : '';
+    const notShared = sh.error ? ` 서재에는 아직 올리지 못했습니다(${sh.error}). 다음에 다시 올립니다.` : sh.rejected ? ` 서재가 받지 않은 것이 ${sh.rejected}개 있습니다(목록에 마우스를 올리면 까닭이 보입니다).` : '';
+    const failed = sum.fail ? ` 원문을 그대로 둔 ${sum.fail}개는 AI가 준 글을 받아들일 수 없었습니다${why ? '(' + why + ')' : ''}. 다시 골라 한 번 더 돌려 볼 수 있습니다.` : '';
     if (sum.error) say(sum.error, true);
-    else if (sum.review) say('확인 필요로 남은 풀이는 [비교]로 원문과 견주어 본 뒤 적용해 주세요.');
-    else say(sum.ok ? '보정본을 주석 창에 반영했습니다.' : '');
+    else if (sum.review) say('확인 필요로 남은 풀이는 [비교]로 원문과 견주어 본 뒤 적용해 주세요.' + shared + notShared + failed);
+    else say((sum.ok ? '보정본을 주석 창에 반영했습니다.' : '') + shared + notShared + failed);
     refreshPanels();
+    loadList(false);
   }
 
   // ---- 견주어 보기(원문 | 보정본)
@@ -356,16 +382,21 @@
     }
     const d = wordDiff(p.orig, f.text);
     const brk = (t) => (t.match(/\n/g) || []).length;
-    const info = [f.state === 'on' ? '주석 창에 보여 주는 중' : '확인 기다리는 중', `바뀐 글자 ${(f.change * 100).toFixed(1)}%`, `줄바꿈 ${brk(p.orig)}곳 → ${brk(f.text)}곳`, flagsText(f.flags), f.model ? `${f.model}` : '', f.created || ''].filter(Boolean);
+    const server = f.origin === 'server';
+    const share = server ? `서재에서 받은 보정본${f.who ? '(올린 이: ' + f.who + ')' : ''}` : f.up === 1 ? '서재에 올림' : f.up === 2 ? `서재가 받지 않음(${f.msg || '까닭 없음'}), 이 PC에서만 보임` : f.state === 'on' ? '서재에 올릴 차례를 기다림' : '적용하면 서재에도 올림';
+    const info = [f.state === 'on' ? '주석 창에 보여 주는 중' : f.state === 'off' ? '이 PC에서 꺼 둠' : '확인 기다리는 중', share, `바뀐 글자 ${(f.change * 100).toFixed(1)}%`, `줄바꿈 ${brk(p.orig)}곳 → ${brk(f.text)}곳`, flagsText(f.flags), f.model ? `${f.model}` : '', f.created || ''].filter(Boolean);
     $('.fx-body', el).innerHTML = `<p class="fx-info${f.flags ? ' warn' : ''}">${info.map(esc).join(' · ')}</p>`
       + (p.stale ? '<p class="fx-info warn">받은 자료의 원문이 바뀌어 이 보정본은 쓰이지 않습니다. 버리고 다시 보정해 주세요.</p>' : '')
       + `<div class="fx-cols"><div><h5>원문</h5><div class="fx-text">${paintText(p.orig, d && d.del, 'fx-del')}</div></div>`
       + `<div><h5>보정본</h5><div class="fx-text">${paintText(f.text, d && d.ins, 'fx-ins')}</div></div></div>`;
-    $('.fx-actions', el).innerHTML = `<button class="btn btn-danger fx-drop">${ic('trash', 14)}${f.state === 'on' ? '원문으로 되돌리기' : '보정본 버리기'}</button><span class="spacer"></span>`
-      + (f.state !== 'on' && !p.stale ? `<button class="btn btn-primary fx-ok">${ic('check', 14)}이 보정본 적용</button>` : '')
+    // 내 보정본은 되돌리면 지워지고(서재에서도 내린다), 서재에서 받은 것은 이 PC에서만 끈다.
+    const dropLabel = server ? '이 PC에서 끄기(원문 보기)' : f.state === 'on' ? '원문으로 되돌리기' : '보정본 버리기';
+    $('.fx-actions', el).innerHTML = (server && f.state === 'off' ? '' : `<button class="btn btn-danger fx-drop">${ic('trash', 14)}${dropLabel}</button>`) + '<span class="spacer"></span>'
+      + (f.state !== 'on' && !p.stale ? `<button class="btn btn-primary fx-ok">${ic('check', 14)}${f.state === 'off' ? '다시 켜기' : '이 보정본 적용'}</button>` : '')
       + `<button class="btn fx-back">${o.back ? '목록으로' : '닫기'}</button>`;
     $('.fx-back', el).onclick = back;
-    $('.fx-drop', el).onclick = async () => { await call('fix_discard', { series: o.series, bk: o.bk, seqs: [o.seq] }).catch(() => 0); refreshPanels(); back(); };
+    const drop = $('.fx-drop', el);
+    if (drop) drop.onclick = async () => { await call('fix_discard', { series: o.series, bk: o.bk, seqs: [o.seq] }).catch(() => 0); refreshPanels(); back(); };
     const ok = $('.fx-ok', el);
     if (ok) ok.onclick = async () => { await call('fix_approve', { series: o.series, bk: o.bk, seqs: [o.seq] }).catch(() => 0); refreshPanels(); back(); };
   }
@@ -380,6 +411,13 @@
     S.picked = new Set(b.picked.filter((q) => S.list.some((t) => t.seq === q && t.chars > 0)));
     paintList();
   }
+
+  // 다른 사용자가 올린 보정본을 뒤에서 받아 왔으면, 그 책을 보고 있는 주석 창을 다시 그린다.
+  tauri().event.listen('fix-synced', (ev) => {
+    const bk = ev && ev.payload && ev.payload.bk;
+    if (Layout.panels().some((p) => p.kind === 'comm' && panelRef(p).bk === bk)) refreshPanels();
+    if (S.el && S.bk === bk && !S.running && $('.fx-list', S.el)) loadList(false);
+  });
 
   window.NoteFix = { open, compare };
 })();

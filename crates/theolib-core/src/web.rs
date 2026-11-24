@@ -502,7 +502,7 @@ pub struct ApiOut {
 }
 
 /// 허용 경로 목록. `/api/study/` 는 접두사, 나머지는 정확히 일치. `?` 앞부분으로 판정.
-const ALLOWED: [&str; 16] = [
+const ALLOWED: [&str; 17] = [
     "/api/me",
     "/api/me/sermons",
     "/api/me/mcp",
@@ -519,6 +519,8 @@ const ALLOWED: [&str; 16] = [
     "/api/books",
     "/api/passage",
     "/api/meta",
+    // 주석 글 AI 보정본 나누기(올리기·받기)
+    "/api/fix/",
 ];
 
 pub fn allowed_path(path: &str) -> bool {

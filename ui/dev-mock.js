@@ -279,10 +279,13 @@
       case 'fix_targets': {
         r = NOTES.filter((n) => n.comm === args.series && n.start_key <= args.hi && n.end_key >= args.lo).map((n) => {
           const f = mockFix[n.id];
-          return { id: n.id, series: n.comm, series_name: n.comm_name, bk: args.bk, seq: n.id, ref: n.ref, title: n.title, start_key: n.start_key, end_key: n.end_key, chars: mockOrig(n).length, fix: f ? f.state : '', flags: f ? f.flags : '', change: f ? f.change : 0, model: f ? 'gpt-6-sol@low' : '' };
+          return { id: n.id, series: n.comm, series_name: n.comm_name, bk: args.bk, seq: n.id, ref: n.ref, title: n.title, start_key: n.start_key, end_key: n.end_key, chars: mockOrig(n).length, fix: f ? f.state : '', flags: f ? f.flags : '', change: f ? f.change : 0, model: f ? 'gpt-6-sol@low' : '', origin: f ? (f.origin || 'me') : '', up: f ? (f.up || 0) : 0, who: f ? (f.who || '') : '', msg: '' };
         });
         break;
       }
+      case 'fix_engines': r = [{ id: 'codex', name: '챗GPT 구독', kind: 'cli', models: [] }, { id: 'claude', name: '클로드 구독', kind: 'cli', models: [] }, { id: 'deepseek', name: '딥시크', kind: 'api', models: ['deepseek-flash', 'deepseek-v4-pro'] }]; break;
+      // 서재와 맞추기: 처음 한 번은 다른 사용자가 올린 보정본 하나(24:22-26)를 받아 온 것처럼 흉내 낸다.
+      case 'fix_sync': { let pulled = 0; if (!mockFix[6] && !mockRun.synced) { mockRun.synced = true; mockFix[6] = { state: 'on', text: mockFixed(NOTES.find((x) => x.id === 6), false), change: 0.004, flags: '', origin: 'server', who: '관리자', up: 0 }; pulled = 1; } r = { sent: 0, rejected: 0, removed: 0, pulled, error: '' }; break; }
       case 'fix_state': r = Object.assign({}, mockRun); break;
       case 'fix_stop': mockRun.stop = true; r = null; break;
       case 'fix_start': {
@@ -293,7 +296,8 @@
         const step = (i) => {
           if (i >= seqs.length || mockRun.stop) {
             mockRun.running = false; sum.stopped = !!mockRun.stop; sum.secs = (Date.now() - t0) / 1000;
-            if (listeners['fix-done']) listeners['fix-done']({ payload: sum });
+            for (const k in mockFix) if (mockFix[k].state === 'on' && mockFix[k].origin !== 'server') mockFix[k].up = 1;
+            if (listeners['fix-done']) listeners['fix-done']({ payload: Object.assign({ share: { sent: sum.ok, rejected: 0, removed: 0, pulled: 0, error: '' } }, sum) });
             return;
           }
           const n = NOTES.find((x) => x.id === seqs[i]);
@@ -313,11 +317,11 @@
       case 'fix_pair': {
         const n = NOTES.find((x) => x.id === args.seq);
         const f = n && mockFix[n.id];
-        r = n ? { ref: n.ref, title: n.title, orig: mockOrig(n), stale: false, fix: f ? { orig_hash: 'x', text: f.text, state: f.state, flags: f.flags, change: f.change, engine: 'codex', model: 'gpt-6-sol@low', created: '2026-11-24 10:00:00' } : null } : null;
+        r = n ? { ref: n.ref, title: n.title, orig: mockOrig(n), stale: false, fix: f ? { orig_hash: 'x', text: f.text, state: f.state, flags: f.flags, change: f.change, engine: 'codex', model: 'gpt-6-sol@low', created: '2026-11-24 10:00:00', origin: f.origin || 'me', up: f.up || 0, who: f.who || '', msg: '' } : null } : null;
         break;
       }
       case 'fix_approve': r = 0; for (const q of args.seqs || []) if (mockFix[q]) { mockFix[q].state = 'on'; r++; } break;
-      case 'fix_discard': r = 0; for (const q of args.seqs || []) if (mockFix[q]) { delete mockFix[q]; r++; } break;
+      case 'fix_discard': r = 0; for (const q of args.seqs || []) if (mockFix[q]) { if (mockFix[q].origin === 'server') mockFix[q].state = 'off'; else delete mockFix[q]; r++; } break;
       case 'comm_series': r = [{ id: '카리스종합주석', name: '카리스 종합주석', books: [1,2,3,4,5,6,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66], have: [44] }]; break;
       case 'parse': r = PARSE; break;
       case 'lex': r = LEX[args.code] || []; break;

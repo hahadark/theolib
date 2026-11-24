@@ -71,8 +71,18 @@ pub fn open(home: &Home) -> Result<Connection> {
            flags TEXT NOT NULL DEFAULT '', change REAL NOT NULL DEFAULT 0,
            engine TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
            created TEXT NOT NULL DEFAULT '',
-           PRIMARY KEY(series,bk,seq));",
+           PRIMARY KEY(series,bk,seq));
+         CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS undo(series TEXT NOT NULL, bk INTEGER NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY(series,bk,seq));",
     )?;
+    // 서재와 나누기(0.5.5)에서 더한 칸. origin: me(이 PC에서 보정) | server(서재에서 받음),
+    // up: 0 아직 안 올림 · 1 올림 · 2 서재가 받지 않음(msg 에 까닭), who: 올린 이 표시, sat: 서재 시각.
+    let cols: Vec<String> = c.prepare("PRAGMA table_info(fix)")?.query_map([], |r| r.get::<_, String>(1))?.flatten().collect();
+    for (name, decl) in [("origin", "TEXT NOT NULL DEFAULT 'me'"), ("up", "INTEGER NOT NULL DEFAULT 0"), ("who", "TEXT NOT NULL DEFAULT ''"), ("sat", "INTEGER NOT NULL DEFAULT 0"), ("msg", "TEXT NOT NULL DEFAULT ''")] {
+        if !cols.iter().any(|x| x == name) {
+            c.execute(&format!("ALTER TABLE fix ADD COLUMN {name} {decl}"), [])?;
+        }
+    }
     Ok(c)
 }
 
@@ -108,6 +118,14 @@ pub struct FixRow {
     pub engine: String,
     pub model: String,
     pub created: String,
+    /// me(이 PC에서 보정) | server(서재에서 받은 다른 사람의 보정본)
+    pub origin: String,
+    /// 0 아직 안 올림 · 1 서재에 올림 · 2 서재가 받지 않음
+    pub up: i64,
+    /// 올린 이(관리자·특별 계정·회원)
+    pub who: String,
+    /// 서재가 받지 않은 까닭
+    pub msg: String,
 }
 
 fn rows(home: &Home, series: &str, bk: i64) -> HashMap<i64, FixRow> {
@@ -116,9 +134,12 @@ fn rows(home: &Home, series: &str, bk: i64) -> HashMap<i64, FixRow> {
         return m;
     }
     let Ok(c) = open(home) else { return m };
-    let Ok(mut s) = c.prepare("SELECT seq,orig_hash,text,state,flags,change,engine,model,created FROM fix WHERE series=? AND bk=?") else { return m };
+    let Ok(mut s) = c.prepare("SELECT seq,orig_hash,text,state,flags,change,engine,model,created,origin,up,who,msg FROM fix WHERE series=? AND bk=?") else { return m };
     if let Ok(r) = s.query_map((series, bk), |r| {
-        Ok((r.get::<_, i64>(0)?, FixRow { orig_hash: r.get(1)?, text: r.get(2)?, state: r.get(3)?, flags: r.get(4)?, change: r.get(5)?, engine: r.get(6)?, model: r.get(7)?, created: r.get(8)? }))
+        Ok((
+            r.get::<_, i64>(0)?,
+            FixRow { orig_hash: r.get(1)?, text: r.get(2)?, state: r.get(3)?, flags: r.get(4)?, change: r.get(5)?, engine: r.get(6)?, model: r.get(7)?, created: r.get(8)?, origin: r.get(9)?, up: r.get(10)?, who: r.get(11)?, msg: r.get(12)? },
+        ))
     }) {
         for x in r.flatten() {
             m.insert(x.0, x.1);
@@ -140,11 +161,16 @@ pub struct Target {
     pub start_key: i64,
     pub end_key: i64,
     pub chars: usize,
-    /// "" | on | pending | stale(원문이 바뀌어 쓰이지 않는 보정본)
+    /// "" | on | pending | off(서재 보정본을 이 PC에서 꺼 둠) | stale(원문이 바뀌어 쓰이지 않는 보정본)
     pub fix: String,
     pub flags: String,
     pub change: f64,
     pub model: String,
+    /// "" | me | server
+    pub origin: String,
+    pub up: i64,
+    pub who: String,
+    pub msg: String,
 }
 
 /// 범위(lo..hi, 장*1000+절)에 걸린 한 시리즈의 풀이 목록. 1장을 포함하면 서론도 함께 나온다.
@@ -175,6 +201,10 @@ pub fn targets(home: &Home, series: &str, bk: i64, lo: i64, hi: i64) -> Result<V
                 flags: f.map(|f| f.flags.clone()).unwrap_or_default(),
                 change: f.map(|f| f.change).unwrap_or(0.0),
                 model: f.map(|f| f.model.clone()).unwrap_or_default(),
+                origin: f.map(|f| f.origin.clone()).unwrap_or_default(),
+                up: f.map(|f| f.up).unwrap_or(0),
+                who: f.map(|f| f.who.clone()).unwrap_or_default(),
+                msg: f.map(|f| f.msg.clone()).unwrap_or_default(),
             }
         })
         .collect())
@@ -198,7 +228,7 @@ pub fn pair(home: &Home, series: &str, bk: i64, seq: i64) -> Result<Option<Pair>
     Ok(Some(Pair { r#ref: n.r#ref, title: n.title, orig: n.text, fix: f, stale }))
 }
 
-/// 확인을 기다리는 보정본을 켠다. 켠 개수를 돌려준다.
+/// 확인을 기다리거나 꺼 둔 보정본을 켠다. 켠 개수를 돌려준다.
 pub fn approve(home: &Home, series: &str, bk: i64, seqs: &[i64]) -> Result<usize> {
     let c = open(home)?;
     let mut n = 0;
@@ -208,12 +238,23 @@ pub fn approve(home: &Home, series: &str, bk: i64, seqs: &[i64]) -> Result<usize
     Ok(n)
 }
 
-/// 보정본을 지워 원문으로 되돌린다. 지운 개수를 돌려준다.
+/// 원문으로 되돌린다. 내가 만든 보정본은 지우고(서재에 올렸으면 서재에서도 내리도록 적어 둔다),
+/// 서재에서 받은 다른 사람의 보정본은 이 PC에서만 꺼 둔다. 바꾼 개수를 돌려준다.
 pub fn discard(home: &Home, series: &str, bk: i64, seqs: &[i64]) -> Result<usize> {
     let c = open(home)?;
     let mut n = 0;
     for s in seqs {
-        n += c.execute("DELETE FROM fix WHERE series=? AND bk=? AND seq=?", (series, bk, s))?;
+        let row = c.query_row("SELECT origin,up FROM fix WHERE series=? AND bk=? AND seq=?", (series, bk, s), |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))).ok();
+        match row {
+            Some((o, _)) if o == "server" => n += c.execute("UPDATE fix SET state='off' WHERE series=? AND bk=? AND seq=?", (series, bk, s))?,
+            Some((_, up)) => {
+                n += c.execute("DELETE FROM fix WHERE series=? AND bk=? AND seq=?", (series, bk, s))?;
+                if up == 1 {
+                    c.execute("INSERT OR IGNORE INTO undo(series,bk,seq) VALUES(?,?,?)", (series, bk, s))?;
+                }
+            }
+            None => {}
+        }
     }
     Ok(n)
 }
@@ -834,8 +875,9 @@ pub fn run(home: &Home, jobs: &[Job], ai: &dyn Ai, engine: &str, model: &str, wo
         let mut o = o.clone();
         if let Some(t) = text {
             let c = db.lock().unwrap();
+            // 다시 보정하면 이 PC의 것으로 바뀐다(origin=me, 아직 안 올림).
             let r = c.execute(
-                "INSERT OR REPLACE INTO fix(series,bk,seq,orig_hash,text,state,flags,change,engine,model,created) VALUES(?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'))",
+                "INSERT OR REPLACE INTO fix(series,bk,seq,orig_hash,text,state,flags,change,engine,model,created,origin,up,who,sat,msg) VALUES(?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'),'me',0,'',0,'')",
                 (&j.series, j.bk, j.seq, hash(&j.text), t, if o.state == "ok" { "on" } else { "pending" }, &o.flags, o.change, engine, model),
             );
             if let Err(e) = r {
@@ -856,6 +898,209 @@ pub fn jobs_for(home: &Home, series: &str, bk: i64, seqs: &[i64]) -> Result<Vec<
         .filter(|n| seqs.contains(&n.seq) && !n.text.trim().is_empty())
         .map(|n| Job { id: n.id, series: n.series, bk, seq: n.seq, text: n.text })
         .collect())
+}
+
+// ---------------------------------------------------------------------------
+// 서재와 나누기: 이 PC에서 켠 보정본을 서재에 올리고, 다른 사람이 올린 보정본을 받아 합친다.
+// 서재는 풀이마다 "지금 쓸 보정본" 하나를 정해 준다(등급이 높은 것, 같으면 나중 것).
+// ---------------------------------------------------------------------------
+
+/// 서재 API 호출(시험에서는 가짜를 끼운다). (상태 코드, 응답 JSON)
+pub trait Net {
+    fn call(&self, method: &str, path: &str, body: Option<&Value>) -> std::result::Result<(u16, Value), String>;
+}
+
+/// 로그인한 웹 서재로 보낸다.
+pub struct WebNet<'a>(pub &'a Home);
+
+impl Net for WebNet<'_> {
+    fn call(&self, method: &str, path: &str, body: Option<&Value>) -> std::result::Result<(u16, Value), String> {
+        let o = crate::web::api(self.0, method, path, body).map_err(|e| e.to_string())?;
+        Ok((o.status, o.body))
+    }
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+pub struct SyncOut {
+    /// 서재에 올린 개수
+    pub sent: usize,
+    /// 서재가 받지 않은 개수(숫자가 다르거나 원문이 다른 경우)
+    pub rejected: usize,
+    /// 서재에서 내린 개수(되돌린 것)
+    pub removed: usize,
+    /// 받아서 바뀐 개수
+    pub pulled: usize,
+    pub error: String,
+}
+
+fn net_error(code: u16, body: &Value) -> String {
+    let msg = body.get("error").and_then(Value::as_str).unwrap_or("");
+    if msg == "login" || code == 401 {
+        "로그인이 필요합니다.".into()
+    } else if !msg.is_empty() {
+        msg.to_string()
+    } else {
+        format!("서재 응답 {code}")
+    }
+}
+
+fn meta_get(c: &Connection, k: &str) -> i64 {
+    c.query_row("SELECT v FROM meta WHERE k=?", [k], |r| r.get::<_, String>(0)).ok().and_then(|v| v.parse().ok()).unwrap_or(0)
+}
+
+fn meta_set(c: &Connection, k: &str, v: i64) -> Result<()> {
+    c.execute("INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, v.to_string()))?;
+    Ok(())
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+/// 주소 뒤에 붙이는 값(한글 주석 이름)을 %XX 로 바꾼다.
+fn enc(s: &str) -> String {
+    s.bytes().map(|b| if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
+/// 올릴 것이 남아 있는지(켜져 있고 아직 안 올린 내 보정본, 서재에서 내릴 것).
+pub fn has_pending_push(home: &Home) -> bool {
+    if !db_path(home).exists() {
+        return false;
+    }
+    let Ok(c) = open(home) else { return false };
+    let n: i64 = c.query_row("SELECT (SELECT count(*) FROM fix WHERE origin='me' AND state='on' AND up=0) + (SELECT count(*) FROM undo)", [], |r| r.get(0)).unwrap_or(0);
+    n > 0
+}
+
+/// 이 PC에서 켠 내 보정본을 서재에 올리고, 되돌린 것은 서재에서 내린다. 확인을 기다리는 것은 올리지 않는다.
+pub fn push(home: &Home, net: &dyn Net) -> SyncOut {
+    let mut out = SyncOut::default();
+    let c = match open(home) {
+        Ok(c) => c,
+        Err(e) => {
+            out.error = e.to_string();
+            return out;
+        }
+    };
+    // 1. 되돌린 것 내리기
+    let undo: Vec<(String, i64, i64)> = c.prepare("SELECT series,bk,seq FROM undo").and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map(|r| r.flatten().collect())).unwrap_or_default();
+    for part in undo.chunks(80) {
+        let items: Vec<Value> = part.iter().map(|(s, b, q)| json!({"src": s, "bk": b, "seq": q})).collect();
+        match net.call("POST", "/api/fix/del", Some(&json!({"items": items}))) {
+            Ok((200, _)) => {
+                for (s, b, q) in part {
+                    let _ = c.execute("DELETE FROM undo WHERE series=? AND bk=? AND seq=?", (s, b, q));
+                }
+                out.removed += part.len();
+            }
+            Ok((code, body)) => {
+                out.error = net_error(code, &body);
+                return out;
+            }
+            Err(e) => {
+                out.error = e;
+                return out;
+            }
+        }
+    }
+    // 2. 켜져 있는 내 보정본 올리기(한 번에 20개, 글자 수 40만까지)
+    type Row = (String, i64, i64, String, String, f64, String, String, String);
+    let rows: Vec<Row> = c
+        .prepare("SELECT series,bk,seq,orig_hash,text,change,flags,engine,model FROM fix WHERE origin='me' AND state='on' AND up=0 ORDER BY bk,series,seq")
+        .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?))).map(|r| r.flatten().collect()))
+        .unwrap_or_default();
+    let mut i = 0;
+    while i < rows.len() {
+        let (mut j, mut size) = (i, 0usize);
+        while j < rows.len() && j - i < 20 && (j == i || size + rows[j].4.chars().count() <= 400_000) {
+            size += rows[j].4.chars().count();
+            j += 1;
+        }
+        let items: Vec<Value> = rows[i..j].iter().map(|r| json!({"src": r.0, "bk": r.1, "seq": r.2, "orig_hash": r.3, "text": r.4, "change": r.5, "flags": r.6, "engine": r.7, "model": r.8})).collect();
+        match net.call("POST", "/api/fix/put", Some(&json!({"items": items}))) {
+            Ok((200, body)) => {
+                for r in body.get("results").and_then(Value::as_array).cloned().unwrap_or_default() {
+                    let (s, b, q) = (r["src"].as_str().unwrap_or(""), r["bk"].as_i64().unwrap_or(0), r["seq"].as_i64().unwrap_or(-1));
+                    if r["ok"].as_bool().unwrap_or(false) {
+                        let _ = c.execute("UPDATE fix SET up=1, sat=?, msg='' WHERE series=? AND bk=? AND seq=? AND origin='me'", (r["at"].as_i64().unwrap_or(0), s, b, q));
+                        out.sent += 1;
+                    } else {
+                        let _ = c.execute("UPDATE fix SET up=2, msg=? WHERE series=? AND bk=? AND seq=? AND origin='me'", (r["error"].as_str().unwrap_or("서재가 받지 않았습니다"), s, b, q));
+                        out.rejected += 1;
+                    }
+                }
+            }
+            Ok((code, body)) => {
+                out.error = net_error(code, &body);
+                return out;
+            }
+            Err(e) => {
+                out.error = e;
+                return out;
+            }
+        }
+        i = j;
+    }
+    out
+}
+
+/// 그 책에서 서재의 보정본이 바뀐 것을 받아 합친다. 바뀐 개수를 돌려준다.
+///  - 이 PC에 아직 안 올린 내 보정본(확인 기다림 포함)이 있는 풀이는 건드리지 않는다(올린 뒤에 서재가 정한다).
+///  - 그 밖에는 서재가 정한 보정본으로 바꾼다. 이 PC에서 꺼 둔 것은 꺼진 채로 글만 바뀐다.
+///  - 서재에서 없어진 것은 받아 둔 것도 지운다.
+pub fn pull(home: &Home, net: &dyn Net, bk: i64) -> Result<usize> {
+    let c = open(home)?;
+    let since = meta_get(&c, &format!("since:{bk}"));
+    let (mut after_src, mut after_seq) = (String::new(), -1i64);
+    let (mut changed, mut cursor) = (0usize, since);
+    for _ in 0..500 {
+        let path = format!("/api/fix/list?bk={bk}&since={since}&after_src={}&after_seq={after_seq}", enc(&after_src));
+        let (code, body) = net.call("GET", &path, None).map_err(anyhow::Error::msg)?;
+        if code != 200 {
+            anyhow::bail!(net_error(code, &body));
+        }
+        for it in body.get("items").and_then(Value::as_array).cloned().unwrap_or_default() {
+            let (s, q) = (it["src"].as_str().unwrap_or(""), it["seq"].as_i64().unwrap_or(-1));
+            let local = c.query_row("SELECT origin,up,state,text,orig_hash FROM fix WHERE series=? AND bk=? AND seq=?", (s, bk, q), |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?))).ok();
+            let Some(text) = it["text"].as_str() else {
+                if local.as_ref().is_some_and(|l| l.0 == "server") {
+                    changed += c.execute("DELETE FROM fix WHERE series=? AND bk=? AND seq=?", (s, bk, q))?;
+                }
+                continue;
+            };
+            if local.as_ref().is_some_and(|l| l.0 == "me" && l.1 != 1) {
+                continue;
+            }
+            let mine = it["mine"].as_bool().unwrap_or(false);
+            let hash = it["orig_hash"].as_str().unwrap_or("");
+            let state = if local.as_ref().is_some_and(|l| l.2 == "off") { "off" } else { "on" };
+            if local.as_ref().is_none_or(|l| l.3 != text || l.4 != hash) {
+                changed += 1;
+            }
+            c.execute(
+                "INSERT OR REPLACE INTO fix(series,bk,seq,orig_hash,text,state,flags,change,engine,model,created,origin,up,who,sat,msg) VALUES(?,?,?,?,?,?,?,?,'',?,datetime('now','localtime'),?,?,?,?,'')",
+                (s, bk, q, hash, text, state, it["flags"].as_str().unwrap_or(""), it["change"].as_f64().unwrap_or(0.0), it["model"].as_str().unwrap_or(""), if mine { "me" } else { "server" }, mine as i64, if mine { "" } else { it["who"].as_str().unwrap_or("") }, it["at"].as_i64().unwrap_or(0)),
+            )?;
+        }
+        cursor = body.get("now").and_then(Value::as_i64).unwrap_or(cursor);
+        if !body.get("more").and_then(Value::as_bool).unwrap_or(false) {
+            break;
+        }
+        after_src = body.get("after_src").and_then(Value::as_str).unwrap_or("").to_string();
+        after_seq = body.get("after_seq").and_then(Value::as_i64).unwrap_or(-1);
+    }
+    meta_set(&c, &format!("since:{bk}"), cursor)?;
+    meta_set(&c, &format!("pulled:{bk}"), unix_now())?;
+    Ok(changed)
+}
+
+/// 마지막으로 받은 지 `max_age_s` 초가 지났을 때만 받는다(책을 열 때마다 묻지 않게).
+pub fn pull_if_stale(home: &Home, net: &dyn Net, bk: i64, max_age_s: i64) -> Result<usize> {
+    let last = open(home).map(|c| meta_get(&c, &format!("pulled:{bk}"))).unwrap_or(0);
+    if unix_now() - last < max_age_s {
+        return Ok(0);
+    }
+    pull(home, net, bk)
 }
 
 #[cfg(test)]
@@ -1042,6 +1287,113 @@ mod tests {
         assert_eq!(targets(&home, "s", 43, 3000, 3999).unwrap()[0].fix, "stale");
         assert_eq!(discard(&home, "s", 43, &[2, 3]).unwrap(), 2);
         assert!(targets(&home, "s", 43, 3000, 3999).unwrap().iter().all(|x| x.fix.is_empty()));
+    }
+
+    /// 가짜 서재: 부른 내용을 적어 두고 미리 정한 답을 차례로 돌려준다.
+    struct FakeNet {
+        calls: Mutex<Vec<(String, String, Value)>>,
+        replies: Mutex<VecDeque<(u16, Value)>>,
+    }
+    impl FakeNet {
+        fn new(r: Vec<(u16, Value)>) -> FakeNet {
+            FakeNet { calls: Mutex::new(vec![]), replies: Mutex::new(r.into()) }
+        }
+    }
+    impl Net for FakeNet {
+        fn call(&self, method: &str, path: &str, body: Option<&Value>) -> std::result::Result<(u16, Value), String> {
+            self.calls.lock().unwrap().push((method.to_string(), path.to_string(), body.cloned().unwrap_or(Value::Null)));
+            self.replies.lock().unwrap().pop_front().ok_or_else(|| "더 준비한 답이 없음".to_string())
+        }
+    }
+
+    fn put_row(c: &Connection, seq: i64, text: &str, state: &str, origin: &str, up: i64) {
+        c.execute("INSERT OR REPLACE INTO fix(series,bk,seq,orig_hash,text,state,origin,up) VALUES('s',43,?,?,?,?,?,?)", (seq, format!("h{seq}"), text, state, origin, up)).unwrap();
+    }
+
+    fn row(c: &Connection, seq: i64) -> Option<(String, String, String, i64, String)> {
+        c.query_row("SELECT text,state,origin,up,who FROM fix WHERE series='s' AND bk=43 AND seq=?", [seq], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).ok()
+    }
+
+    #[test]
+    fn push_sends_only_approved_and_marks_results() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::at(dir.path().to_path_buf());
+        let c = open(&home).unwrap();
+        put_row(&c, 2, "켠 것", "on", "me", 0);
+        put_row(&c, 3, "확인 기다림", "pending", "me", 0);
+        put_row(&c, 4, "숫자 바꾼 것", "on", "me", 0);
+        put_row(&c, 5, "이미 올린 것", "on", "me", 1);
+        put_row(&c, 6, "받은 것", "on", "server", 0);
+        assert!(has_pending_push(&home));
+        // 올렸던 것을 되돌리면 서재에서도 내릴 목록에 들어간다. 받은 것은 이 PC에서만 꺼진다.
+        assert_eq!(discard(&home, "s", 43, &[5, 6]).unwrap(), 2);
+        assert!(row(&c, 5).is_none());
+        assert_eq!(row(&c, 6).unwrap().1, "off");
+        assert_eq!(approve(&home, "s", 43, &[6]).unwrap(), 1);
+        assert_eq!(row(&c, 6).unwrap().1, "on");
+        let net = FakeNet::new(vec![
+            (200, json!({"ok": true, "removed": 1})),
+            (200, json!({"ok": true, "results": [{"src": "s", "bk": 43, "seq": 2, "ok": true, "at": 111}, {"src": "s", "bk": 43, "seq": 4, "ok": false, "error": "숫자가 원문과 다릅니다"}]})),
+        ]);
+        let out = push(&home, &net);
+        assert_eq!((out.sent, out.rejected, out.removed, out.error.as_str()), (1, 1, 1, ""));
+        let calls = net.calls.lock().unwrap().clone();
+        assert_eq!(calls[0].1, "/api/fix/del");
+        assert_eq!(calls[0].2["items"][0]["seq"], 5);
+        assert_eq!(calls[1].1, "/api/fix/put");
+        let sent: Vec<i64> = calls[1].2["items"].as_array().unwrap().iter().map(|x| x["seq"].as_i64().unwrap()).collect();
+        assert_eq!(sent, vec![2, 4]);
+        assert_eq!(calls[1].2["items"][0]["orig_hash"], "h2");
+        assert_eq!(row(&c, 2).unwrap().3, 1);
+        assert_eq!(row(&c, 4).unwrap().3, 2);
+        assert_eq!(row(&c, 3).unwrap().3, 0);
+        // 다 보냈으면 다시 부르지 않는다.
+        assert!(!has_pending_push(&home));
+        let out = push(&home, &FakeNet::new(vec![]));
+        assert_eq!((out.sent, out.error.as_str()), (0, ""));
+        // 서재가 거절하면(예: 게스트) 까닭을 돌려주고 다음에 다시 올린다.
+        put_row(&c, 7, "새로 켠 것", "on", "me", 0);
+        let out = push(&home, &FakeNet::new(vec![(403, json!({"ok": false, "error": "회원 로그인 뒤에 올릴 수 있습니다."}))]));
+        assert!(out.error.contains("회원 로그인") && has_pending_push(&home));
+    }
+
+    #[test]
+    fn pull_merges_server_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = Home::at(dir.path().to_path_buf());
+        let c = open(&home).unwrap();
+        put_row(&c, 2, "내가 올린 글", "on", "me", 1);
+        put_row(&c, 3, "아직 확인 전", "pending", "me", 0);
+        put_row(&c, 5, "전에 받은 글", "on", "server", 0);
+        put_row(&c, 6, "꺼 둔 글", "off", "server", 0);
+        let item = |seq: i64, text: Value, mine: bool| json!({"src": "s", "bk": 43, "seq": seq, "orig_hash": format!("h{seq}"), "text": text, "change": 0.01, "flags": "", "model": "m", "who": "관리자", "mine": mine, "at": 900});
+        let net = FakeNet::new(vec![
+            (200, json!({"ok": true, "more": true, "after_src": "카리스", "after_seq": 3, "now": 1000, "items": [item(2, json!("관리자가 올린 글"), false), item(3, json!("다른 사람 글"), false)]})),
+            (200, json!({"ok": true, "more": false, "now": 1234, "items": [item(4, json!("새로 받은 글"), false), item(5, Value::Null, false), item(6, json!("꺼 둔 글의 새 판"), false), item(8, json!("다른 PC에서 내가 올린 글"), true)]})),
+        ]);
+        assert_eq!(pull(&home, &net, 43).unwrap(), 5);
+        let calls = net.calls.lock().unwrap().clone();
+        assert_eq!(calls[0].1, "/api/fix/list?bk=43&since=0&after_src=&after_seq=-1");
+        assert_eq!(calls[1].1, format!("/api/fix/list?bk=43&since=0&after_src={}&after_seq=3", enc("카리스")));
+        // 등급이 높은 사람의 글이 내 글을 대신한다.
+        assert_eq!(row(&c, 2).unwrap(), ("관리자가 올린 글".into(), "on".into(), "server".into(), 0, "관리자".into()));
+        // 아직 올리지 않은 내 것은 그대로.
+        assert_eq!(row(&c, 3).unwrap().0, "아직 확인 전");
+        assert_eq!(row(&c, 4).unwrap().1, "on");
+        assert!(row(&c, 5).is_none());
+        assert_eq!(row(&c, 6).unwrap(), ("꺼 둔 글의 새 판".into(), "off".into(), "server".into(), 0, "관리자".into()));
+        assert_eq!(row(&c, 8).unwrap(), ("다른 PC에서 내가 올린 글".into(), "on".into(), "me".into(), 1, String::new()));
+        // 켜진 것만 주석 창에 쓰인다.
+        let on = applied(&home, 43);
+        assert!(on.contains_key(&("s".to_string(), 4)) && !on.contains_key(&("s".to_string(), 6)) && !on.contains_key(&("s".to_string(), 3)));
+        // 다음에는 서재가 알려 준 시각 뒤로만 묻고, 방금 받았으면 다시 묻지 않는다.
+        let net = FakeNet::new(vec![(200, json!({"ok": true, "more": false, "now": 2000, "items": []}))]);
+        assert_eq!(pull_if_stale(&home, &net, 43, 300).unwrap(), 0);
+        assert!(net.calls.lock().unwrap().is_empty());
+        assert_eq!(pull(&home, &net, 43).unwrap(), 0);
+        assert!(net.calls.lock().unwrap()[0].1.starts_with("/api/fix/list?bk=43&since=1234&"));
+        // 로그인이 풀렸으면 오류로 돌려주고 기준 시각은 그대로 둔다.
+        assert!(pull(&home, &FakeNet::new(vec![(401, json!({"error": "login"}))]), 43).is_err());
     }
 
     #[test]
