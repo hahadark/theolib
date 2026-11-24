@@ -156,8 +156,16 @@ pub fn fix_stop() {
     CANCEL.store(true, Ordering::Relaxed);
 }
 
+/// 한 주석에서 고른 풀이들(차례 번호).
+#[derive(serde::Deserialize)]
+pub struct Pick {
+    series: String,
+    seqs: Vec<i64>,
+}
+
+/// 고른 풀이들을 보정한다. 주석을 여러 개 골랐으면 한 작업으로 함께 돌린다.
 #[tauri::command]
-pub async fn fix_start(app: AppHandle, series: String, bk: i64, seqs: Vec<i64>, engine: String, model: String) -> R<usize> {
+pub async fn fix_start(app: AppHandle, bk: i64, picks: Vec<Pick>, engine: String, model: String) -> R<usize> {
     let h = home()?;
     tauri::async_runtime::spawn_blocking(move || {
         if RUN.lock().unwrap().as_ref().is_some_and(|r| r.running) {
@@ -167,7 +175,11 @@ pub async fn fix_start(app: AppHandle, series: String, bk: i64, seqs: Vec<i64>, 
         if matches!(study::access::scope(&h), study::access::Scope::Guest) {
             return Err("게스트 계정으로는 주석 글을 보정할 수 없습니다. 회원으로 로그인해 주세요.".to_string());
         }
-        let jobs = fix::jobs_for(&h, &series, bk, &seqs).map_err(e)?;
+        let mut jobs = vec![];
+        for p in &picks {
+            jobs.extend(fix::jobs_for(&h, &p.series, bk, &p.seqs).map_err(e)?);
+        }
+        let series = picks.iter().map(|p| p.series.as_str()).collect::<Vec<_>>().join(", ");
         if jobs.is_empty() {
             return Err("보정할 풀이를 고르지 않았습니다.".to_string());
         }

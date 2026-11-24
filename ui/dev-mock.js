@@ -289,8 +289,8 @@
       case 'fix_state': r = Object.assign({}, mockRun); break;
       case 'fix_stop': mockRun.stop = true; r = null; break;
       case 'fix_start': {
-        const seqs = args.seqs || [];
-        Object.assign(mockRun, { running: true, series: args.series, bk: args.bk, done: 0, total: seqs.length, notes: [], stop: false });
+        const seqs = (args.picks || []).flatMap((p) => p.seqs || []);
+        Object.assign(mockRun, { running: true, series: (args.picks || []).map((p) => p.series).join(', '), bk: args.bk, done: 0, total: seqs.length, notes: [], stop: false });
         const sum = { total: seqs.length, ok: 0, review: 0, same: 0, fail: 0, stopped: false, error: '', requests: 0, tok_in: 0, tok_out: 0, cost: 0, secs: 0, chars: 0 };
         const t0 = Date.now();
         const step = (i) => {

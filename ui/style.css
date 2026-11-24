@@ -790,7 +790,14 @@ table.parse tr:hover td{background:var(--acc-soft)}
 .fx-f{display:flex;align-items:center;gap:var(--s3);min-width:0}
 .fx-f > span:first-child{flex:none;width:34px;font-size:12px;font-weight:700;color:var(--fg2)}
 .fx-f select{min-width:0}
-.fx-series,.fx-engine{flex:1;max-width:340px}
+.fx-engine{flex:1;max-width:340px}
+.fx-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.fx-chip{height:26px;font-size:12px}
+.fx-chip:disabled{opacity:.55}
+.fx-group{position:sticky;top:0;z-index:1;display:flex;align-items:baseline;gap:var(--s2);padding:6px var(--s3);font-size:12px;cursor:pointer;background:var(--paper);border-bottom:1px solid var(--line2)}
+.fx-group b{font-size:13px}
+.fx-group .spacer{flex:1}
+.fx-group:hover{background:var(--acc-soft)}
 .fx-span{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
 .fx-span b{margin-right:2px}
 .fx-span input{width:64px}
