@@ -710,6 +710,10 @@ pub fn process(jobs: &[Job], ai: &dyn Ai, workers: usize, sink: &(dyn Fn(&Job, &
     let started = Instant::now();
     let segs: Vec<Vec<Seg>> = jobs.iter().map(|j| segments(&j.text, SEG_MAX)).collect();
     let mut sh = Shared { queue: VecDeque::new(), res: vec![], left: vec![], busy: 0, done: 0, fatal: None, sum: Summary { total: jobs.len(), ..Default::default() } };
+    // 요청 하나가 끝나는 시간은 AI 가 다시 써 내는 글의 길이에 비례한다(GPT-6 Sol 은 1초에 80자쯤).
+    // 그래서 일감이 적을 때는 한 요청에 몰지 않고 함께 돌리는 수만큼 고르게 나눠 전체 시간을 줄인다.
+    let total: usize = segs.iter().flatten().filter(|s| !s.text.trim().is_empty()).map(|s| s.text.chars().count()).sum();
+    let cap = (total / workers.clamp(1, 8)).clamp(2000, BATCH_MAX);
     let (mut batch, mut size): (Vec<Piece>, usize) = (vec![], 0);
     for (ji, ss) in segs.iter().enumerate() {
         let mut row: Vec<Option<SegRes>> = vec![];
@@ -723,7 +727,7 @@ pub fn process(jobs: &[Job], ai: &dyn Ai, workers: usize, sink: &(dyn Fn(&Job, &
             left += 1;
             let n = s.text.chars().count();
             sh.sum.chars += n;
-            if !batch.is_empty() && (size + n > BATCH_MAX || batch.len() >= BATCH_PIECES) {
+            if !batch.is_empty() && (size + n > cap || batch.len() >= BATCH_PIECES) {
                 sh.queue.push_back(std::mem::take(&mut batch));
                 size = 0;
             }

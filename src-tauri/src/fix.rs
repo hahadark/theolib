@@ -183,8 +183,8 @@ pub async fn fix_start(app: AppHandle, series: String, bk: i64, seqs: Vec<i64>, 
                 }
                 let _ = app.emit("fix-progress", ProgressEv { note: o.clone(), done, total });
             };
-            // 구독 CLI 는 프로세스를 띄우므로 3개, API 는 4개를 함께 보낸다.
-            let workers = if engine == "claude" || engine == "codex" { 3 } else { 4 };
+            // 함께 보내는 요청 수: 구독 CLI 는 6개, API 는 8개(견본 시험에서 3개일 때보다 큰 장이 절반 가까이 빨라졌다).
+            let workers = if engine == "claude" || engine == "codex" { 6 } else { 8 };
             let sum = match fix::run(&h, &jobs, ai.as_ref(), &engine, &model, workers, &on, &CANCEL) {
                 Ok(s) => s,
                 Err(x) => fix::Summary { total, error: x.to_string(), ..Default::default() },

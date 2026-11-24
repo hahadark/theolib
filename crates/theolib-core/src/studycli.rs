@@ -732,7 +732,11 @@ fn rand_hex(n: usize) -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let mut s = format!("{t:x}{:x}", std::process::id());
+    // 앞자리부터 잘라 쓰므로, 매번 달라지는 값(차례 번호·프로세스 번호)을 앞에 둔다.
+    // 예전에는 시각의 윗자리가 앞에 와서, 4초 안에 함께 시작한 실행들이 같은 이름(같은 결과 파일)을 썼다.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let c = SEQ.fetch_add(1, Ordering::Relaxed);
+    let mut s = format!("{:04x}{:04x}{:012x}", c & 0xffff, std::process::id() & 0xffff, t & 0xffff_ffff_ffff);
     while s.len() < n {
         s.push('0');
     }
@@ -1702,7 +1706,7 @@ pub fn one_shot(info: &CliInfo, model: &str, effort: &str, prompt: &str, timeout
             cost: v.get("total_cost_usd").and_then(Value::as_f64),
         });
     }
-    let out_file = work_dir.join(format!("codex-one-{}.txt", rand_hex(8)));
+    let out_file = work_dir.join(format!("codex-one-{}.txt", rand_hex(20)));
     let mut cmd = new_command(&path);
     cmd.arg("exec").arg("--ignore-user-config").arg("--skip-git-repo-check").arg("--ephemeral").arg("-s").arg("read-only");
     cmd.arg("-m").arg(model).arg("-c").arg(format!("model_reasoning_effort={}", if effort.is_empty() { "low" } else { effort }));
@@ -1715,6 +1719,20 @@ pub fn one_shot(info: &CliInfo, model: &str, effort: &str, prompt: &str, timeout
     let _ = fs::remove_file(&out_file);
     let (out, err) = res?;
     if text.trim().is_empty() {
+        // 코덱스는 실패 까닭을 stdout 의 error·turn.failed 이벤트로 알려 준다(stderr 끝에는 엉뚱한 로그가 섭일 수 있다).
+        for line in out.lines() {
+            let Ok(ev) = serde_json::from_str::<Value>(line) else { continue };
+            let kind = ev.get("type").and_then(Value::as_str).unwrap_or("");
+            if kind == "error" || kind == "turn.failed" {
+                let msg = ev.get("message").and_then(Value::as_str).or_else(|| ev.pointer("/error/message").and_then(Value::as_str)).unwrap_or("");
+                if looks_like_limit(msg) {
+                    return Err("사용 한도에 걸렸습니다.".into());
+                }
+                if !msg.trim().is_empty() {
+                    return Err(format!("답을 받지 못했습니다. {}", truncate_chars(msg.trim(), 300)));
+                }
+            }
+        }
         return Err(empty_answer_err(&out, &err));
     }
     let (mut tok_in, mut tok_out) = (0, 0);

@@ -19,7 +19,7 @@
   const PREFER = ['codex', 'claude', 'deepseek'];
   const RECOMMEND = 'codex|gpt-6-sol@low';
   // 1초에 처리하는 글자 수(견본 시험에서 잰 값, 예상 시간 안내용).
-  const SPEED = { codex: 240, claude: 42, deepseek: 900 };
+  const SPEED = { codex: 420, claude: 80, deepseek: 1100 };
   const FLAG = { num: '숫자가 달라짐', big: '많이 바뀜', script: '원어 글자가 새로 들어감', md: '기호가 들어감', part: '일부는 원문 그대로' };
   const STATE = { on: '보정됨', ok: '보정됨', pending: '확인 필요', review: '확인 필요', same: '고칠 곳 없음', fail: '원문 유지', stale: '원문이 바뀜', off: '꺼 둠' };
   // 목록에 적는 상태 말: 서재에서 받은 것, 내가 올린 것, 서재가 받지 않은 것을 가른다.
