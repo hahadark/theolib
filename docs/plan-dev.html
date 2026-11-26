@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko" class="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>설교 설계도 — 혼자 돌려 보기</title>
+<link rel="stylesheet" href="../ui/fonts.css">
+<link rel="stylesheet" href="../ui/style.css">
+<link rel="stylesheet" href="../ui/plan.css">
+<style>
+/* 시험 쪽 꾸밈(dev-). 구현에는 쓰지 않는다. */
+html,body{height:100%;margin:0}
+body{display:block;overflow:hidden}
+#dev-app{height:100vh}
+.dev-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99;padding:8px 14px;border-radius:8px;background:#222;color:#fff;font:13px/1.4 sans-serif}
+/* ?web=1 일 때 웹 쪽 변수(실제 웹 사이트 스타일이 채워 주는 값의 흉내) */
+html.dev-web{--bg:#f6f7f9;--card:#fff;--ink:#16202c;--ink2:#3d4a5a;--muted:#6b7686;--faint:#b4bcc7;--line:#e2e6ec;--blue:#2457c5;--blue2:#1b45a0;--blue-soft:#e8effc;--amber:#b7791f;--mark:#fdeeb0;--green:#2f855a;--red:#c53030;--serif:Georgia,serif}
+</style>
+</head>
+<body>
+<div id="dev-app"></div>
+<script src="plan-dev-host.js"></script>
+<script src="../ui/plan.js"></script>
+<script>
+(function () {
+  'use strict';
+  var host = window.PLAN_DEV_HOST;
+  if (host.kind === 'web') document.documentElement.classList.add('dev-web');
+  // plan-map.js 는 다른 작업자가 만든다. 있으면 쓰고 없어도 돌아간다.
+  function start() { window.devView = window.SermonPlan.mount(document.getElementById('dev-app'), host); }
+  fetch('../ui/plan-map.js', { method: 'HEAD' }).then(function (r) {
+    if (!r.ok) return start();
+    var s = document.createElement('script'); s.src = '../ui/plan-map.js'; s.onload = start; s.onerror = start;
+    document.head.appendChild(s);
+  }, start);
+})();
+</script>
+</body>
+</html>

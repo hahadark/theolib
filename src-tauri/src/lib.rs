@@ -501,6 +501,19 @@ fn article_body(id: i64) -> R<String> {
     Ok(html::text_to_html(&rd()?.article_body(id).map_err(e)?))
 }
 
+/// 글을 파일로 저장한다(저장 창을 띄워 자리를 고르게 한다). 저장했으면 그 경로, 그만두면 None.
+#[tauri::command]
+async fn save_text(app: AppHandle, name: String, text: String) -> R<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let safe: String = name.chars().map(|c| if matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '_' } else { c }).collect();
+    let ext = safe.rsplit('.').next().filter(|e| e.len() <= 5 && *e != safe).unwrap_or("md").to_string();
+    let path = tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_file_name(&safe).add_filter("글", &[ext.as_str()]).blocking_save_file()).await.map_err(e)?;
+    let Some(p) = path else { return Ok(None) };
+    let p = p.into_path().map_err(e)?;
+    std::fs::write(&p, text.as_bytes()).map_err(e)?;
+    Ok(Some(p.to_string_lossy().into_owned()))
+}
+
 /// 시험 빌드(--features selftest) 전용: 화면 조작을 흉내 내고 결과를 파일로 남긴다. 배포 빌드에는 없다.
 #[cfg(feature = "selftest")]
 #[tauri::command]
@@ -567,14 +580,14 @@ pub fn run() {
     });
     #[cfg(feature = "selftest")]
     let b = b.invoke_handler(tauri::generate_handler![
-        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, selftest_report,
+        sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, save_text, selftest_report,
         study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_open, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir,
         fix::fix_targets, fix::fix_engines, fix::fix_sync, fix::fix_state, fix::fix_start, fix::fix_stop, fix::fix_pair, fix::fix_approve, fix::fix_discard
     ]);
     #[cfg(not(feature = "selftest"))]
     let b = b
         .invoke_handler(tauri::generate_handler![
-            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token,
+            sources, preview_source, add_source, add_items, remove_items, pick_paths, scan_local, import_local, cancel_download, free_url, reinstall_free, free_status, sync_source, remove_source, index_status, resume_index, books, versions, chapter, notes, comm_series, parse, lex, search_text, set_hidden, user_list, bookmark_add, bookmark_delete, memo_save, memo_delete, highlight_set, goto_ref, articles, article_body, update_status, update_check, update_install, update_set_token, save_text,
             study::web_status, study::web_login, study::web_logout, study::web_guest_login, study::web_open, study::web_base_get, study::web_base_set, study::web_api, study::web_image, study::web_app_source, study::mcp_status, study::mcp_set, study::mcp_test, study::mcp_read, study::ai_engines, study::ai_scope, study::ai_key_save, study::ai_key_delete, study::ai_test, study::ai_cli_login, study::ai_cli_guide, study::ai_cli_install, study::ai_cli_refresh, study::study_settings_get, study::study_settings_set, study::study_start, study::study_ask, study::study_stop, study::study_delete, study::study_list, study::study_get, study::app_info, study::open_data_dir,
         fix::fix_targets, fix::fix_engines, fix::fix_sync, fix::fix_state, fix::fix_start, fix::fix_stop, fix::fix_pair, fix::fix_approve, fix::fix_discard
         ]);

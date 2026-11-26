@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>마인드맵 시험 쪽 (plan-map-dev)</title>
+<link rel="stylesheet" href="../ui/fonts.css">
+<link rel="stylesheet" href="../ui/style.css">
+<link rel="stylesheet" href="../ui/plan.css">
+<style>
+  /* 시험 쪽에서만 쓰는 모양. plan.css 는 건드리지 않는다. */
+  html,body{height:100%;margin:0}
+  body{display:flex;flex-direction:column;background:var(--bg);color:var(--fg)}
+  .dev-bar{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 12px;border-bottom:1px solid var(--line);font:13px/1.4 var(--ui-font,sans-serif)}
+  .dev-bar button,.dev-bar select{font:inherit;padding:4px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--paper);color:var(--fg);cursor:pointer}
+  .dev-bar button[aria-pressed="true"]{background:var(--acc-soft);font-weight:700}
+  .dev-n button{padding:4px 8px}
+  .dev-chip{padding:5px 10px;border:1px dashed var(--line2);border-radius:6px;background:var(--paper);cursor:grab;user-select:none}
+  .dev-log{margin-left:auto;color:var(--mut);max-width:34em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dev-stage{flex:1;min-height:0}
+  .dev-stage .pl-root{height:100%}
+  .dev-stage.dev-narrow .pl-root{width:390px;border-right:1px solid var(--line)}
+  /* 고침 칸 견본(진짜 모양은 plan.js 가 그린다) */
+  .dev-ed textarea{display:block;width:100%;min-height:80px;margin:4px 0 8px}
+</style>
+</head>
+<body>
+<div class="dev-bar">
+  <b>가지 수</b>
+  <span class="dev-n" id="dev-n"></span>
+  <button type="button" id="dev-narrow" aria-pressed="false">좁은 화면 (뿌리 폭 390px)</button>
+  <button type="button" id="dev-dark" aria-pressed="false">어둠 테마</button>
+  <button type="button" id="dev-full" aria-pressed="false">항목 한도 꽉 참</button>
+  <span class="dev-chip" id="dev-chip" draggable="true">자료 견본 (끌어서 가지 카드에)</span>
+  <button type="button" id="dev-destroy">destroy</button>
+  <button type="button" id="dev-remount">다시 띄우기</button>
+  <span class="dev-log" id="dev-log" role="status"></span>
+</div>
+<div class="dev-stage" id="dev-stage">
+  <div class="pl-root" id="dev-root" data-view="map" data-tray="closed"><div class="pl-body"><div class="pl-main" id="dev-main"></div></div></div>
+</div>
+<script src="../ui/plan-map.js"></script>
+<script src="plan-map-dev.js"></script>
+</body>
+</html>

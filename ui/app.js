@@ -61,6 +61,7 @@ function showView(v, tab) {
     if (window.Settings) Settings.show(tab);
   }
   if (v === 'study' && window.Study) Study.show();
+  if (v === 'plan' && window.PlanHost) PlanHost.show();
   if (v === 'articles') loadArticles();
   if (v === 'search') { idxNote(); if (!$('#results').firstChild) renderSearchEmpty(); }
   saveView();
@@ -1114,7 +1115,7 @@ function fixTag(n) {
 }
 function noteHtml(n, current) {
   const band = current ? ' current' : '';
-  return `<div class="note${band}"><h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span>${fixTag(n)}</h4><div>${n.html}</div></div>`;
+  return `<div class="note${band}" data-sk="${Number.isFinite(n.start_key) ? n.start_key : ''}" data-cn="${esc(n.comm_name)}" data-bk="${n.bk}"><h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)} <span class="muted">${esc(n.ref)}</span>${fixTag(n)}</h4><div>${n.html}</div></div>`;
 }
 
 // 주석 목록을 대표 1개 / 다른 해설 / 장 단위 개요 3층으로 가른다.
@@ -1184,7 +1185,7 @@ function commItemHtml(n) {
   const ek = Number.isFinite(n.end_key) ? n.end_key : sk;
   const single = sk != null && ek === sk && sk % 1000 > 0;
   const anchor = single ? ` data-anchor="${sk % 1000}" id="comm-v-${sk % 1000}"` : '';
-  return `<div class="note cnote" data-sk="${sk == null ? '' : sk}" data-ek="${ek == null ? '' : ek}"${anchor}>` +
+  return `<div class="note cnote" data-sk="${sk == null ? '' : sk}" data-ek="${ek == null ? '' : ek}" data-cn="${esc(n.comm_name)}" data-bk="${n.bk}"${anchor}>` +
     `<h4><span class="cr">${esc(noteRange(n))}</span>${n.kind ? `<span class="tag">${esc(n.kind)}</span>` : ''}${esc(n.title)}${fixTag(n)}</h4><div>${n.html}</div></div>`;
 }
 

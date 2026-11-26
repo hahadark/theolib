@@ -1,7 +1,7 @@
 /* study.js — AI 본문연구 화면 (앱판).
    구성·문구는 온라인 신학서재 웹판(static/index.html 의 AI 본문 연구)을 그대로 옮기고,
    서버 호출만 앱 명령(web_api / study_*)으로 바꾼다. 설계: docs/AI_STUDY_DESIGN.md 3·4절.
-   바깥에 내놓는 것은 window.Study = { show(), openRead(bookId, page) } 뿐이다. */
+   바깥에 내놓는 것은 window.Study = { show(), openRead(bookId, page), prefill({ref, notes}) } 뿐이다. */
 (function () {
   'use strict';
 
@@ -1830,7 +1830,33 @@
     if (r && !r.hidden) closeReader();
   });
 
-  window.Study = { show, openRead };
+  // 설교 설계도에서 넘어올 때: 본문과 요청 글을 채운 시작 화면을 연다. AI는 사용자가 고르고 시작한다.
+  async function prefill(o) {
+    ensureShell();
+    if (!S.booted) await boot();
+    saveSettings({ ref: (o && o.ref) || '', notes: (o && o.notes) || '' });
+    S.id = null;
+    paintHome();
+    loadPref();
+    loadList();
+  }
+
+  // 설계도의 출처에서 돌아올 때: 그 연구를 연다.
+  async function open(id) {
+    ensureShell();
+    if (!S.booted) await boot();
+    return openView(id);
+  }
+  // 지금 보고 있는 것(담기 단추가 출처를 붙일 때 쓴다).
+  function current() {
+    const t = document.getElementById('rtitle');
+    return {
+      job: S.page === 'view' && S.j ? { id: S.id, ref: S.j.ref || '' } : null,
+      reading: S.reading ? { book: S.reading.book, page: S.reading.page, title: t ? t.textContent : '' } : null,
+    };
+  }
+
+  window.Study = { show, openRead, prefill, open, current };
 })();
 
 

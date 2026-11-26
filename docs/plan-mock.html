@@ -1,0 +1,1079 @@
+<!doctype html>
+<html lang="ko" class="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>설교 설계도 — 화면 견본</title>
+<link rel="stylesheet" href="../ui/fonts.css">
+<link rel="stylesheet" href="../ui/style.css">
+<link rel="stylesheet" href="../ui/plan.css">
+<style>
+/* 견본 쪽을 꾸미는 규칙(mk-). 구현에는 쓰지 않는다. */
+html,body{height:auto}
+body{display:block;overflow:auto;padding:32px 32px 96px}
+.mk-h{font-family:var(--serif);font-size:20px;margin:56px 0 4px}
+.mk-h:first-of-type{margin-top:0}
+.mk-p{margin:0 0 14px;font-size:13px;color:var(--fg2);max-width:70em}
+.mk-row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+.mk-frame{border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:var(--bg);flex:1 1 480px;min-width:0}
+.mk-h-560{height:560px}
+.mk-h-900{height:900px}
+.mk-phone{flex:none;width:390px;height:780px}
+.mk-cap{font-size:12px;color:var(--fg2);margin:6px 2px 0}
+</style>
+</head>
+<body>
+
+<!-- 아이콘 모음(견본용). 구현에서는 같은 모양의 SVG 를 svg.pl-ic 로 그 자리에 넣는다. -->
+<svg width="0" height="0" hidden>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v14M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497zM15 5l4 4"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 2v13M16 6l-4-4-4 4M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></symbol>
+  <symbol id="i-dn" viewBox="0 0 24 24"><path d="M12 5v14M19 12l-7 7-7-7"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24"><path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7zM14 2v4a2 2 0 0 0 2 2h4M10 9H8M16 13H8M16 17H8"/></symbol>
+  <symbol id="i-shelf" viewBox="0 0 24 24"><path d="m16 6 4 14M12 6v14M8 8v12M4 4v16"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0zM20 3v4M22 5h-4"/></symbol>
+</svg>
+
+<!-- ====================================================================== (가) -->
+<h2 class="mk-h">(가) 설계도 목록</h2>
+<p class="mk-p">채운 단추는 [새 설계도] 하나. 설계도가 하나도 없으면 오른쪽처럼 머리의 단추를 빼고 빈 상태 안에 둔다.</p>
+<div class="mk-row">
+  <div class="mk-frame mk-h-560">
+    <div class="pl-root" data-view="list">
+      <div class="pl-list">
+        <div class="pl-list-in">
+          <div class="pl-list-head">
+            <div class="pl-grow">
+              <h1 class="pl-list-title">설교 설계도</h1>
+              <p class="pl-list-sub">찾은 자료를 설교 차례대로 엮습니다.</p>
+            </div>
+            <button type="button" class="pl-btn pl-btn-primary pl-new"><svg class="pl-ic"><use href="#i-plus"/></svg>새 설계도</button>
+          </div>
+          <ul class="pl-plans">
+            <li class="pl-plan" data-id="p1732412345678">
+              <button type="button" class="pl-plan-open">
+                <span class="pl-plan-title">가지는 붙어 있을 때 삽니다</span>
+                <span class="pl-plan-meta"><span class="pl-plan-ref">요 15:1-8</span><span class="pl-plan-when">오늘 14:20 고침</span></span>
+              </button>
+              <button type="button" class="pl-ib pl-ib-danger pl-plan-del" aria-label="설계도 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+            </li>
+            <li class="pl-plan" data-id="p1731900000000">
+              <button type="button" class="pl-plan-open">
+                <span class="pl-plan-title">광야에서 배운 기도</span>
+                <span class="pl-plan-meta"><span class="pl-plan-ref">출 17:8-16</span><span class="pl-plan-when">11월 20일 고침</span></span>
+              </button>
+              <button type="button" class="pl-ib pl-ib-danger pl-plan-del" aria-label="설계도 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+            </li>
+            <li class="pl-plan" data-id="p1731200000000">
+              <button type="button" class="pl-plan-open">
+                <span class="pl-plan-title">제목 없는 설계도</span>
+                <span class="pl-plan-meta"><span class="pl-plan-ref">본문 없음</span><span class="pl-plan-when">11월 12일 고침</span></span>
+              </button>
+              <button type="button" class="pl-ib pl-ib-danger pl-plan-del" aria-label="설계도 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+            </li>
+          </ul>
+          <p class="pl-list-foot">설계도 3개</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mk-frame mk-h-560">
+    <div class="pl-root" data-view="list">
+      <div class="pl-list">
+        <div class="pl-list-in">
+          <div class="pl-list-head">
+            <div class="pl-grow">
+              <h1 class="pl-list-title">설교 설계도</h1>
+              <p class="pl-list-sub">찾은 자료를 설교 차례대로 엮습니다.</p>
+            </div>
+          </div>
+          <div class="pl-empty">
+            <svg class="pl-ic"><use href="#i-file"/></svg>
+            <p>아직 설계도가 없습니다. 본문을 정하고 서론·대지·결론에 자료를 놓아 보세요.</p>
+            <button type="button" class="pl-btn pl-btn-primary pl-new"><svg class="pl-ic"><use href="#i-plus"/></svg>새 설계도</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== (나) -->
+<h2 class="mk-h">(나) 순서 보기 + 자료함</h2>
+<p class="mk-p">보이는 상태: 설교 정보 펼침 · 3.2 고치는 중(<code>.pl-editing</code>) · 4.1 아래에 놓을 자리(<code>.pl-drop-after</code>) · 끌고 있는 자료(<code>.pl-dragging</code>) · 빈 가지 안내(결론) · 자료함의 "넣음"(<code>.pl-used</code>)과 [넣기] 차림표. 이 화면에는 채운 단추가 없다.</p>
+<div class="mk-frame">
+  <div class="pl-root" data-view="outline" data-tray="open">
+    <div class="pl-doc" data-id="p1732412345678">
+
+      <div class="pl-head">
+        <div class="pl-head-row">
+          <button type="button" class="pl-ib pl-back" aria-label="설계도 목록으로" title="설계도 목록"><svg class="pl-ic"><use href="#i-left"/></svg></button>
+          <input class="pl-bare pl-title" type="text" value="가지는 붙어 있을 때 삽니다" placeholder="설교 제목" aria-label="설교 제목" maxlength="120">
+          <span class="pl-save" data-state="saved" role="status"><svg class="pl-ic"><use href="#i-check"/></svg>저장됨</span>
+          <div class="pl-seg pl-views" role="tablist" aria-label="보기">
+            <button type="button" role="tab" class="pl-on" aria-selected="true" data-view="outline">순서 보기</button>
+            <button type="button" role="tab" aria-selected="false" data-view="map">마인드맵</button>
+          </div>
+          <details class="pl-menu-wrap pl-export">
+            <summary class="pl-btn"><svg class="pl-ic"><use href="#i-share"/></svg><span>내보내기</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary>
+          </details>
+          <button type="button" class="pl-ib pl-tray-toggle pl-on" aria-pressed="true" aria-label="자료함" title="자료함 접기"><svg class="pl-ic"><use href="#i-inbox"/></svg></button>
+        </div>
+        <div class="pl-head-sub">
+          <label class="pl-ref-field"><svg class="pl-ic"><use href="#i-book"/></svg><input class="pl-bare pl-ref" type="text" value="요 15:1-8" placeholder="본문  예: 요 15:1-8" aria-label="설교 본문"></label>
+          <button type="button" class="pl-info-toggle" aria-expanded="true" aria-controls="mk-info">설교 정보<span class="pl-info-sum">11월 27일 · 금요기도회</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></button>
+        </div>
+        <div class="pl-info" id="mk-info">
+          <label class="pl-field"><span>일자</span><input class="pl-input" type="date" data-info="date" value="2026-11-27"></label>
+          <label class="pl-field"><span>예배</span><input class="pl-input" type="text" data-info="service" value="금요기도회"></label>
+          <label class="pl-field"><span>장소</span><input class="pl-input" type="text" data-info="place" value="" placeholder="예: 본당"></label>
+          <label class="pl-field"><span>설교자</span><input class="pl-input" type="text" data-info="preacher" value="" placeholder="이름"></label>
+        </div>
+      </div>
+
+      <div class="pl-body">
+        <div class="pl-main">
+          <div class="pl-outline-scroll">
+            <div class="pl-outline">
+
+              <div class="pl-big" data-kind="big">
+                <label class="pl-big-label" for="mk-big">중심 사상</label>
+                <textarea class="pl-bare pl-big-text" id="mk-big" rows="1" placeholder="이 설교가 말하려는 한 문장">열매는 애써 짜내는 것이 아니라 예수님께 붙어 있을 때 맺힙니다</textarea>
+              </div>
+
+              <!-- 1. 서론 -->
+              <div class="pl-branch" data-kind="intro" data-id="b1">
+                <div class="pl-branch-head">
+                  <span class="pl-branch-no">1</span>
+                  <span class="pl-branch-kind">서론</span>
+                  <input class="pl-bare pl-branch-name" type="text" value="" placeholder="이름을 붙여도 됩니다" aria-label="서론 이름">
+                  <span class="pl-branch-tools"></span>
+                </div>
+                <textarea class="pl-bare pl-thesis" rows="1" placeholder="이 가지에서 말할 한 문장" aria-label="서론에서 말할 한 문장">열심히 사는데도 메마른 까닭을 묻습니다</textarea>
+                <ol class="pl-items">
+                  <li class="pl-item" data-id="i1" data-kind="own">
+                    <div class="pl-item-row" draggable="true">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">1.1</span>
+                      <div class="pl-item-body">
+                        <div class="pl-item-text" tabindex="0" role="button">바쁘게 섬겼는데 기쁨은 줄어든 한 주를 떠올리게 하기</div>
+                        <div class="pl-item-meta"><span class="pl-kind">직접</span><span class="pl-note"><svg class="pl-ic"><use href="#i-pencil"/></svg>질문으로 시작</span></div>
+                      </div>
+                      <span class="pl-item-tools">
+                        <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                        <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                  </li>
+                  <li class="pl-item" data-id="i2" data-kind="verse">
+                    <div class="pl-item-row" draggable="true">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">1.2</span>
+                      <div class="pl-item-body">
+                        <div class="pl-item-text" tabindex="0" role="button">나는 참포도나무요 내 아버지는 농부라</div>
+                        <div class="pl-item-meta"><span class="pl-kind">성경</span><button type="button" class="pl-src" title="출처 열기">요 15:1 · 개역개정</button></div>
+                      </div>
+                      <span class="pl-item-tools">
+                        <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                        <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                  </li>
+                </ol>
+                <button type="button" class="pl-add"><svg class="pl-ic"><use href="#i-plus"/></svg>항목</button>
+              </div>
+
+              <!-- 2. 대지 1 -->
+              <div class="pl-branch" data-kind="point" data-pt="1" data-id="b2">
+                <div class="pl-branch-head">
+                  <span class="pl-branch-no">2</span>
+                  <span class="pl-branch-kind">대지 1</span>
+                  <input class="pl-bare pl-branch-name" type="text" value="참포도나무는 예수님이십니다" placeholder="이름을 붙여도 됩니다" aria-label="대지 1 이름">
+                  <span class="pl-branch-tools">
+                    <button type="button" class="pl-ib pl-branch-up" aria-label="대지를 앞으로" title="앞으로" disabled><svg class="pl-ic"><use href="#i-up"/></svg></button>
+                    <button type="button" class="pl-ib pl-branch-down" aria-label="대지를 뒤로" title="뒤로"><svg class="pl-ic"><use href="#i-dn"/></svg></button>
+                    <button type="button" class="pl-ib pl-ib-danger pl-branch-del" aria-label="대지 빼기" title="대지 빼기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                  </span>
+                </div>
+                <textarea class="pl-bare pl-thesis" rows="1" placeholder="이 가지에서 말할 한 문장" aria-label="대지 1에서 말할 한 문장">우리가 붙어 있을 곳은 한 분뿐입니다</textarea>
+                <ol class="pl-items">
+                  <li class="pl-item" data-id="i3" data-kind="comm">
+                    <div class="pl-item-row" draggable="true">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">2.1</span>
+                      <div class="pl-item-body">
+                        <div class="pl-item-text" tabindex="0" role="button">구약에서 포도나무는 이스라엘을 가리키는 그림이었다. 예수께서 "참"이라 하신 것은 그 자리를 자신이 채우신다는 뜻이다.</div>
+                        <div class="pl-item-meta"><span class="pl-kind">주석</span><button type="button" class="pl-src" title="출처 열기">요한복음 주석(견본) · 요 15:1</button></div>
+                      </div>
+                      <span class="pl-item-tools">
+                        <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                        <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                    <ol class="pl-items pl-sub">
+                      <li class="pl-item" data-id="i4" data-kind="verse">
+                        <div class="pl-item-row" draggable="true">
+                          <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                          <span class="pl-item-no">2.1.1</span>
+                          <div class="pl-item-body">
+                            <div class="pl-item-text" tabindex="0" role="button">주께서 한 포도나무를 애굽에서 가져다가 민족들을 쫓아내시고 그것을 심으셨나이다</div>
+                            <div class="pl-item-meta"><span class="pl-kind">성경</span><button type="button" class="pl-src" title="출처 열기">시 80:8 · 개역개정</button></div>
+                          </div>
+                          <span class="pl-item-tools">
+                            <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                            <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                          </span>
+                        </div>
+                      </li>
+                    </ol>
+                  </li>
+                </ol>
+                <button type="button" class="pl-add"><svg class="pl-ic"><use href="#i-plus"/></svg>항목</button>
+              </div>
+
+              <!-- 3. 대지 2 -->
+              <div class="pl-branch" data-kind="point" data-pt="2" data-id="b3">
+                <div class="pl-branch-head">
+                  <span class="pl-branch-no">3</span>
+                  <span class="pl-branch-kind">대지 2</span>
+                  <input class="pl-bare pl-branch-name" type="text" value="붙어 있는 것이 먼저입니다" placeholder="이름을 붙여도 됩니다" aria-label="대지 2 이름">
+                  <span class="pl-branch-tools">
+                    <button type="button" class="pl-ib pl-branch-up" aria-label="대지를 앞으로" title="앞으로"><svg class="pl-ic"><use href="#i-up"/></svg></button>
+                    <button type="button" class="pl-ib pl-branch-down" aria-label="대지를 뒤로" title="뒤로"><svg class="pl-ic"><use href="#i-dn"/></svg></button>
+                    <button type="button" class="pl-ib pl-ib-danger pl-branch-del" aria-label="대지 빼기" title="대지 빼기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                  </span>
+                </div>
+                <textarea class="pl-bare pl-thesis" rows="1" placeholder="이 가지에서 말할 한 문장" aria-label="대지 2에서 말할 한 문장">열매보다 먼저 "거하라"고 하십니다</textarea>
+                <ol class="pl-items">
+                  <li class="pl-item" data-id="i5" data-kind="verse">
+                    <div class="pl-item-row" draggable="true">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">3.1</span>
+                      <div class="pl-item-body">
+                        <div class="pl-item-text" tabindex="0" role="button">내 안에 거하라 나도 너희 안에 거하리라</div>
+                        <div class="pl-item-meta"><span class="pl-kind">성경</span><button type="button" class="pl-src" title="출처 열기">요 15:4 · 개역개정</button></div>
+                      </div>
+                      <span class="pl-item-tools">
+                        <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                        <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                  </li>
+
+                  <!-- 고치는 중 -->
+                  <li class="pl-item pl-editing" data-id="i6" data-kind="page">
+                    <div class="pl-item-row">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">3.2</span>
+                      <div class="pl-item-body">
+                        <div class="pl-edit">
+                          <textarea class="pl-input pl-edit-text" aria-label="글" maxlength="4000">"거하다"는 머물다, 떠나지 않는다는 뜻이다. 이 단락에서 거듭 나오는 낱말이다.</textarea>
+                          <div class="pl-edit-fields">
+                            <label class="pl-field"><span>출처</span><input class="pl-input pl-edit-src" type="text" value="《요한복음 강해》(견본) p.212"></label>
+                            <label class="pl-field"><span>메모</span><input class="pl-input pl-edit-note" type="text" value="" placeholder="예: 예화로"></label>
+                          </div>
+                          <div class="pl-edit-actions">
+                            <span class="pl-count">44 / 4,000자</span>
+                            <span class="pl-grow"></span>
+                            <button type="button" class="pl-btn pl-btn-quiet pl-edit-cancel">취소</button>
+                            <button type="button" class="pl-btn pl-edit-done">마침</button>
+                          </div>
+                        </div>
+                      </div>
+                      <span class="pl-item-tools"></span>
+                    </div>
+                    <ol class="pl-items pl-sub">
+                      <li class="pl-item" data-id="i7" data-kind="own">
+                        <div class="pl-item-row" draggable="true">
+                          <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                          <span class="pl-item-no">3.2.1</span>
+                          <div class="pl-item-body">
+                            <div class="pl-item-text" tabindex="0" role="button">기도와 말씀을 "해야 할 일"이 아니라 "머무는 자리"로 말하기</div>
+                            <div class="pl-item-meta"><span class="pl-kind">직접</span></div>
+                          </div>
+                          <span class="pl-item-tools">
+                            <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                            <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                          </span>
+                        </div>
+                      </li>
+                    </ol>
+                  </li>
+
+                  <li class="pl-item" data-id="i8" data-kind="ai">
+                    <div class="pl-item-row" draggable="true">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">3.3</span>
+                      <div class="pl-item-body">
+                        <div class="pl-item-text" tabindex="0" role="button">4절부터 7절까지 "거하다"가 여러 번 되풀이된다. 명령은 "맺으라"가 아니라 "거하라"이다.</div>
+                        <div class="pl-item-meta"><span class="pl-kind">AI 연구</span><button type="button" class="pl-src" title="출처 열기">본문연구 · 요 15:1-8</button><span class="pl-note"><svg class="pl-ic"><use href="#i-pencil"/></svg>원문 확인하기</span></div>
+                      </div>
+                      <span class="pl-item-tools">
+                        <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                        <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                  </li>
+                  <li class="pl-item" data-id="i9" data-kind="own">
+                    <div class="pl-item-row" draggable="true">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">3.4</span>
+                      <div class="pl-item-body">
+                        <div class="pl-item-text" tabindex="0" role="button">충전기에 꽂힌 전화기 이야기. 꽂혀 있어야 쓸 수 있다.</div>
+                        <div class="pl-item-meta"><span class="pl-kind">직접</span><span class="pl-note"><svg class="pl-ic"><use href="#i-pencil"/></svg>예화로</span></div>
+                      </div>
+                      <span class="pl-item-tools">
+                        <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                        <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                  </li>
+                </ol>
+                <button type="button" class="pl-add"><svg class="pl-ic"><use href="#i-plus"/></svg>항목</button>
+              </div>
+
+              <!-- 4. 대지 3 : 4.1 아래에 놓을 자리 -->
+              <div class="pl-branch" data-kind="point" data-pt="3" data-id="b4">
+                <div class="pl-branch-head">
+                  <span class="pl-branch-no">4</span>
+                  <span class="pl-branch-kind">대지 3</span>
+                  <input class="pl-bare pl-branch-name" type="text" value="아버지는 열매를 위해 손질하십니다" placeholder="이름을 붙여도 됩니다" aria-label="대지 3 이름">
+                  <span class="pl-branch-tools">
+                    <button type="button" class="pl-ib pl-branch-up" aria-label="대지를 앞으로" title="앞으로"><svg class="pl-ic"><use href="#i-up"/></svg></button>
+                    <button type="button" class="pl-ib pl-branch-down" aria-label="대지를 뒤로" title="뒤로" disabled><svg class="pl-ic"><use href="#i-dn"/></svg></button>
+                    <button type="button" class="pl-ib pl-ib-danger pl-branch-del" aria-label="대지 빼기" title="대지 빼기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                  </span>
+                </div>
+                <textarea class="pl-bare pl-thesis" rows="1" placeholder="이 가지에서 말할 한 문장" aria-label="대지 3에서 말할 한 문장">가지치기는 버림이 아니라 돌봄입니다</textarea>
+                <ol class="pl-items">
+                  <li class="pl-item pl-drop-after" data-id="i10" data-kind="verse">
+                    <div class="pl-item-row" draggable="true">
+                      <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                      <span class="pl-item-no">4.1</span>
+                      <div class="pl-item-body">
+                        <div class="pl-item-text" tabindex="0" role="button">무릇 열매를 맺는 가지는 더 열매를 맺게 하려 하여 그것을 깨끗하게 하시느니라</div>
+                        <div class="pl-item-meta"><span class="pl-kind">성경</span><button type="button" class="pl-src" title="출처 열기">요 15:2 · 개역개정</button></div>
+                      </div>
+                      <span class="pl-item-tools">
+                        <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기" title="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                        <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                  </li>
+                </ol>
+                <button type="button" class="pl-add"><svg class="pl-ic"><use href="#i-plus"/></svg>항목</button>
+              </div>
+
+              <!-- 5. 결론 : 빈 가지 -->
+              <div class="pl-branch" data-kind="outro" data-id="b5">
+                <div class="pl-branch-head">
+                  <span class="pl-branch-no">5</span>
+                  <span class="pl-branch-kind">결론</span>
+                  <input class="pl-bare pl-branch-name" type="text" value="" placeholder="이름을 붙여도 됩니다" aria-label="결론 이름">
+                  <span class="pl-branch-tools"></span>
+                </div>
+                <textarea class="pl-bare pl-thesis" rows="1" placeholder="이 가지에서 말할 한 문장" aria-label="결론에서 말할 한 문장">이번 주에 머물 자리 하나를 정합시다</textarea>
+                <ol class="pl-items"></ol>
+                <p class="pl-branch-empty">아직 넣은 자료가 없습니다. 자료함에서 끌어다 놓거나 아래에서 직접 쓰세요.</p>
+                <button type="button" class="pl-add"><svg class="pl-ic"><use href="#i-plus"/></svg>항목</button>
+              </div>
+
+              <div class="pl-outline-foot">
+                <button type="button" class="pl-btn pl-btn-quiet pl-add-point"><svg class="pl-ic"><use href="#i-plus"/></svg>대지 더하기</button>
+                <button type="button" class="pl-btn pl-btn-quiet pl-toggle-more" aria-pressed="false"><svg class="pl-ic"><use href="#i-plus"/></svg>더 공부할 것 두기</button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <div class="pl-veil"></div>
+        <div class="pl-tray" role="complementary" aria-label="자료함">
+          <div class="pl-tray-head">
+            <b class="pl-tray-title">자료함</b><span class="pl-tray-n">6</span>
+            <span class="pl-grow"></span>
+            <button type="button" class="pl-ib pl-tray-close" aria-label="자료함 접기" title="접기"><svg class="pl-ic pl-when-wide"><use href="#i-x"/></svg><svg class="pl-ic pl-when-narrow"><use href="#i-down"/></svg></button>
+          </div>
+          <div class="pl-tray-tools">
+            <label class="pl-search"><svg class="pl-ic"><use href="#i-search"/></svg><input class="pl-input pl-tray-q" type="search" placeholder="자료함에서 찾기" aria-label="자료함에서 찾기"></label>
+            <div class="pl-tray-acts">
+              <button type="button" class="pl-btn pl-btn-quiet pl-btn-sm pl-clip-new"><svg class="pl-ic"><use href="#i-pencil"/></svg>직접 쓰기</button>
+              <button type="button" class="pl-btn pl-btn-quiet pl-btn-sm pl-clip-paste"><svg class="pl-ic"><use href="#i-copy"/></svg>붙여넣기</button>
+            </div>
+          </div>
+          <ul class="pl-clips">
+            <li class="pl-clip" data-id="c1" data-kind="verse" draggable="true">
+              <p class="pl-clip-text">나는 포도나무요 너희는 가지라 그가 내 안에, 내가 그 안에 거하면 사람이 열매를 많이 맺나니 나를 떠나서는 너희가 아무 것도 할 수 없음이라</p>
+              <div class="pl-clip-meta"><span class="pl-kind">성경</span><span class="pl-clip-src">요 15:5 · 개역개정</span></div>
+              <div class="pl-clip-foot">
+                <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음</span>
+                <span class="pl-grow"></span>
+                <details class="pl-menu-wrap pl-put" open>
+                  <summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary>
+                  <div class="pl-menu" role="menu">
+                    <div class="pl-menu-label">어느 가지에 넣을까요</div>
+                    <button type="button" role="menuitem" data-branch="b1" data-kind="intro"><i class="pl-dot"></i><span>1. 서론</span></button>
+                    <button type="button" role="menuitem" data-branch="b2" data-kind="point" data-pt="1"><i class="pl-dot"></i><span>2. 참포도나무는 예수님이십니다</span></button>
+                    <button type="button" role="menuitem" data-branch="b3" data-kind="point" data-pt="2"><i class="pl-dot"></i><span>3. 붙어 있는 것이 먼저입니다</span></button>
+                    <button type="button" role="menuitem" data-branch="b4" data-kind="point" data-pt="3"><i class="pl-dot"></i><span>4. 아버지는 열매를 위해 손질하십니다</span></button>
+                    <button type="button" role="menuitem" data-branch="b5" data-kind="outro"><i class="pl-dot"></i><span>5. 결론</span></button>
+                  </div>
+                </details>
+                <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기" title="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+              </div>
+            </li>
+            <li class="pl-clip pl-used" data-id="c2" data-kind="comm" draggable="true">
+              <p class="pl-clip-text">구약에서 포도나무는 이스라엘을 가리키는 그림이었다. 예수께서 "참"이라 하신 것은 그 자리를 자신이 채우신다는 뜻이다.</p>
+              <div class="pl-clip-meta"><span class="pl-kind">주석</span><span class="pl-clip-src">요한복음 주석(견본) · 요 15:1</span></div>
+              <div class="pl-clip-foot">
+                <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음 · 대지 1</span>
+                <span class="pl-grow"></span>
+                <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기" title="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+              </div>
+            </li>
+            <li class="pl-clip" data-id="c3" data-kind="lex" draggable="true">
+              <p class="pl-clip-text">메노(μένω): 머물다, 거하다, 남아 있다. 잠깐 들르는 것이 아니라 자리를 지키는 것.</p>
+              <div class="pl-clip-meta"><span class="pl-kind">사전</span><span class="pl-clip-src">헬라어 사전(견본) · μένω</span></div>
+              <div class="pl-clip-foot">
+                <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음</span>
+                <span class="pl-grow"></span>
+                <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기" title="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+              </div>
+            </li>
+            <li class="pl-clip pl-used" data-id="c4" data-kind="page" draggable="true">
+              <p class="pl-clip-text">"거하다"는 머물다, 떠나지 않는다는 뜻이다. 이 단락에서 거듭 나오는 낱말이다.</p>
+              <div class="pl-clip-meta"><span class="pl-kind">책</span><span class="pl-clip-src">《요한복음 강해》(견본) p.212</span></div>
+              <div class="pl-clip-foot">
+                <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음 · 대지 2</span>
+                <span class="pl-grow"></span>
+                <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기" title="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+              </div>
+            </li>
+            <!-- 끌고 있는 자료 -->
+            <li class="pl-clip pl-dragging" data-id="c5" data-kind="article" draggable="true">
+              <p class="pl-clip-text">겨울에 가지를 치지 않은 포도나무는 잎만 무성하고 알이 잘다. 농부는 이듬해 열매를 보고 가위를 든다.</p>
+              <div class="pl-clip-meta"><span class="pl-kind">소논문</span><span class="pl-clip-src">포도원 농사와 요한복음 15장(견본)</span></div>
+              <div class="pl-clip-foot">
+                <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음</span>
+                <span class="pl-grow"></span>
+                <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기" title="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+              </div>
+            </li>
+            <li class="pl-clip" data-id="c6" data-kind="memo" draggable="true">
+              <p class="pl-clip-text">지난여름 교회 마당 포도 덩굴. 꺾인 가지 하나가 며칠 만에 말랐다.</p>
+              <div class="pl-clip-meta"><span class="pl-kind">메모</span><span class="pl-clip-src">직접</span></div>
+              <div class="pl-clip-foot">
+                <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음</span>
+                <span class="pl-grow"></span>
+                <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기" title="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== (다) -->
+<h2 class="mk-h">(다) 마인드맵 — "둘레로" 배치</h2>
+<p class="mk-p">시계 방향이 설교 차례다(오른쪽 위에서 시작). 보이는 상태: 저장 중 · 내보내기 차림표 열림 · 자료함 접힘 · 대지 2는 항목이 넘쳐 "1개 더 보기" · 결론에 놓는 중(<code>.pl-drop</code>).</p>
+<div class="mk-frame mk-h-900">
+  <div class="pl-root" data-view="map" data-tray="closed">
+    <div class="pl-doc" data-id="p1732412345678">
+      <div class="pl-head">
+        <div class="pl-head-row">
+          <button type="button" class="pl-ib pl-back" aria-label="설계도 목록으로" title="설계도 목록"><svg class="pl-ic"><use href="#i-left"/></svg></button>
+          <input class="pl-bare pl-title" type="text" value="가지는 붙어 있을 때 삽니다" placeholder="설교 제목" aria-label="설교 제목">
+          <span class="pl-save" data-state="saving" role="status">저장 중…</span>
+          <div class="pl-seg pl-views" role="tablist" aria-label="보기">
+            <button type="button" role="tab" aria-selected="false" data-view="outline">순서 보기</button>
+            <button type="button" role="tab" class="pl-on" aria-selected="true" data-view="map">마인드맵</button>
+          </div>
+          <details class="pl-menu-wrap pl-export" open>
+            <summary class="pl-btn"><svg class="pl-ic"><use href="#i-share"/></svg><span>내보내기</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary>
+            <div class="pl-menu" role="menu">
+              <button type="button" role="menuitem" data-act="copy"><svg class="pl-ic"><use href="#i-copy"/></svg><span>글로 복사</span></button>
+              <button type="button" role="menuitem" data-act="md"><svg class="pl-ic"><use href="#i-file"/></svg><span>Markdown 파일로 저장</span></button>
+              <button type="button" role="menuitem" data-act="sermon"><svg class="pl-ic"><use href="#i-shelf"/></svg><span>내 설교 자료실에 넣기</span></button>
+              <div class="pl-menu-sep"></div>
+              <div class="pl-menu-label">AI 본문연구로 보내기</div>
+              <button type="button" role="menuitem" data-act="ai-find"><svg class="pl-ic"><use href="#i-search"/></svg><span>빈 가지에 넣을 자료 찾기</span></button>
+              <button type="button" role="menuitem" data-act="ai-draft"><svg class="pl-ic"><use href="#i-spark"/></svg><span>원고 초안 쓰기</span></button>
+              <div class="pl-menu-note">연구 화면이 열립니다. 거기서 시작을 눌러야 진행됩니다.</div>
+            </div>
+          </details>
+          <button type="button" class="pl-ib pl-tray-toggle" aria-pressed="false" aria-label="자료함" title="자료함 펴기"><svg class="pl-ic"><use href="#i-inbox"/></svg></button>
+        </div>
+        <div class="pl-head-sub">
+          <label class="pl-ref-field"><svg class="pl-ic"><use href="#i-book"/></svg><input class="pl-bare pl-ref" type="text" value="요 15:1-8" placeholder="본문  예: 요 15:1-8" aria-label="설교 본문"></label>
+          <button type="button" class="pl-info-toggle" aria-expanded="false">설교 정보<span class="pl-info-sum">11월 27일 · 금요기도회</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></button>
+        </div>
+      </div>
+
+      <div class="pl-body">
+        <div class="pl-main">
+          <div class="pl-map" data-layout="ring">
+            <div class="pl-map-view" tabindex="0" aria-label="마인드맵. 끌어서 움직이고 휠로 확대합니다.">
+              <div class="pl-map-canvas" style="width:1177px;height:864px;transform:translate(153px,18px) scale(0.9)">
+                <svg class="pl-map-lines" style="width:1177px;height:864px" aria-hidden="true">
+                  <path class="pl-map-line" data-kind="intro" data-to="b1" d="M679 284 C679 242 847 242 847 200"/>
+                  <path class="pl-map-line" data-kind="point" data-pt="1" data-to="b2" d="M728 371 C803 371 803 400 877 400"/>
+                  <path class="pl-map-line" data-kind="point" data-pt="2" data-to="b3" d="M588 457 C588 498 588 498 588 538"/>
+                  <path class="pl-map-line" data-kind="point" data-pt="3" data-to="b4" d="M448 371 C374 371 374 414 300 414"/>
+                  <path class="pl-map-line" data-kind="outro" data-to="b5" d="M498 284 C498 230 330 230 330 175"/>
+                </svg>
+                <div class="pl-map-center" style="left:448px;top:284px">
+                  <div class="pl-map-title">가지는 붙어 있을 때 삽니다</div>
+                  <div class="pl-map-ref">요 15:1-8</div>
+                  <div class="pl-map-big" data-kind="big"><span class="pl-map-big-label">중심 사상</span>열매는 애써 짜내는 것이 아니라 예수님께 붙어 있을 때 맺힙니다</div>
+                </div>
+
+                <div class="pl-map-node" data-kind="intro" data-id="b1" style="left:717px;top:40px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">1</span><span class="pl-map-kind">서론</span></div>
+                  <p class="pl-map-thesis">열심히 사는데도 메마른 까닭을 묻습니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i1" draggable="true" tabindex="0"><span class="pl-item-no">1.1</span><span class="pl-map-item-text">바쁘게 섬겼는데 기쁨은 줄어든 한 주를 떠올리게 하기</span></li>
+                    <li class="pl-map-item" data-id="i2" draggable="true" tabindex="0"><span class="pl-item-no">1.2</span><span class="pl-map-item-text">나는 참포도나무요 내 아버지는 농부라</span></li>
+                  </ul>
+                </div>
+
+                <div class="pl-map-node" data-kind="point" data-pt="1" data-id="b2" style="left:877px;top:378px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">2</span><span class="pl-map-kind">대지 1</span><b class="pl-map-name">참포도나무는 예수님이십니다</b></div>
+                  <p class="pl-map-thesis">우리가 붙어 있을 곳은 한 분뿐입니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i3" draggable="true" tabindex="0"><span class="pl-item-no">2.1</span><span class="pl-map-item-text">구약에서 포도나무는 이스라엘을 가리키는 그림이었다. 예수께서 "참"이라 하신 것은 그 자리를 자신이 채우신다는 뜻이다.</span></li>
+                    <li class="pl-map-item pl-sub" data-id="i4" draggable="true" tabindex="0"><span class="pl-item-no">2.1.1</span><span class="pl-map-item-text">주께서 한 포도나무를 애굽에서 가져다가 민족들을 쫓아내시고 그것을 심으셨나이다</span></li>
+                  </ul>
+                </div>
+
+                <div class="pl-map-node" data-kind="point" data-pt="2" data-id="b3" style="left:458px;top:538px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">3</span><span class="pl-map-kind">대지 2</span><b class="pl-map-name">붙어 있는 것이 먼저입니다</b></div>
+                  <p class="pl-map-thesis">열매보다 먼저 "거하라"고 하십니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i5" draggable="true" tabindex="0"><span class="pl-item-no">3.1</span><span class="pl-map-item-text">내 안에 거하라 나도 너희 안에 거하리라</span></li>
+                    <li class="pl-map-item" data-id="i6" draggable="true" tabindex="0"><span class="pl-item-no">3.2</span><span class="pl-map-item-text">"거하다"는 머물다, 떠나지 않는다는 뜻이다. 이 단락에서 거듭 나오는 낱말이다.</span></li>
+                    <li class="pl-map-item pl-sub" data-id="i7" draggable="true" tabindex="0"><span class="pl-item-no">3.2.1</span><span class="pl-map-item-text">기도와 말씀을 "해야 할 일"이 아니라 "머무는 자리"로 말하기</span></li>
+                    <li class="pl-map-item" data-id="i8" draggable="true" tabindex="0"><span class="pl-item-no">3.3</span><span class="pl-map-item-text">4절부터 7절까지 "거하다"가 여러 번 되풀이된다. 명령은 "맺으라"가 아니라 "거하라"이다.</span></li>
+                  </ul>
+                  <button type="button" class="pl-map-more" aria-expanded="false">1개 더 보기</button>
+                </div>
+
+                <div class="pl-map-node" data-kind="point" data-pt="3" data-id="b4" style="left:40px;top:392px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">4</span><span class="pl-map-kind">대지 3</span><b class="pl-map-name">아버지는 열매를 위해 손질하십니다</b></div>
+                  <p class="pl-map-thesis">가지치기는 버림이 아니라 돌봄입니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i10" draggable="true" tabindex="0"><span class="pl-item-no">4.1</span><span class="pl-map-item-text">무릇 열매를 맺는 가지는 더 열매를 맺게 하려 하여 그것을 깨끗하게 하시느니라</span></li>
+                  </ul>
+                </div>
+
+                <div class="pl-map-node pl-drop" data-kind="outro" data-id="b5" style="left:200px;top:65px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">5</span><span class="pl-map-kind">결론</span></div>
+                  <p class="pl-map-thesis">이번 주에 머물 자리 하나를 정합시다</p>
+                  <p class="pl-map-node-empty">여기에 놓으면 결론에 들어갑니다</p>
+                </div>
+              </div>
+            </div>
+            <div class="pl-map-bar pl-map-bar-layout">
+              <div class="pl-seg pl-layouts" role="radiogroup" aria-label="배치">
+                <button type="button" role="radio" class="pl-on" aria-checked="true" data-layout="ring">둘레로</button>
+                <button type="button" role="radio" aria-checked="false" data-layout="sides">좌우로</button>
+              </div>
+            </div>
+            <div class="pl-map-bar pl-map-bar-zoom">
+              <button type="button" class="pl-ib pl-zoom-out" aria-label="작게" title="작게"><svg class="pl-ic"><use href="#i-minus"/></svg></button>
+              <span class="pl-zoom-val" aria-live="polite">90%</span>
+              <button type="button" class="pl-ib pl-zoom-in" aria-label="크게" title="크게"><svg class="pl-ic"><use href="#i-plus"/></svg></button>
+              <button type="button" class="pl-btn pl-btn-quiet pl-btn-sm pl-zoom-fit">한눈에</button>
+            </div>
+          </div>
+        </div>
+        <div class="pl-veil"></div>
+        <div class="pl-tray" role="complementary" aria-label="자료함"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== (라) -->
+<h2 class="mk-h">(라) 마인드맵 — "좌우로" 배치</h2>
+<p class="mk-p">오른쪽 위에서 아래로, 이어서 왼쪽 위에서 아래로. 보이는 상태: 저장 실패 · 3.3을 눌러 고침 칸(<code>.pl-pop</code>)이 뜸 · "더 공부할 것" 가지가 켜져 있음.</p>
+<div class="mk-frame mk-h-900">
+  <div class="pl-root" data-view="map" data-tray="closed">
+    <div class="pl-doc" data-id="p1732412345678">
+      <div class="pl-head">
+        <div class="pl-head-row">
+          <button type="button" class="pl-ib pl-back" aria-label="설계도 목록으로" title="설계도 목록"><svg class="pl-ic"><use href="#i-left"/></svg></button>
+          <input class="pl-bare pl-title" type="text" value="가지는 붙어 있을 때 삽니다" placeholder="설교 제목" aria-label="설교 제목">
+          <span class="pl-save" data-state="failed" role="status">저장하지 못했습니다<button type="button" class="pl-link pl-save-retry">다시 하기</button></span>
+          <div class="pl-seg pl-views" role="tablist" aria-label="보기">
+            <button type="button" role="tab" aria-selected="false" data-view="outline">순서 보기</button>
+            <button type="button" role="tab" class="pl-on" aria-selected="true" data-view="map">마인드맵</button>
+          </div>
+          <details class="pl-menu-wrap pl-export">
+            <summary class="pl-btn"><svg class="pl-ic"><use href="#i-share"/></svg><span>내보내기</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary>
+          </details>
+          <button type="button" class="pl-ib pl-tray-toggle" aria-pressed="false" aria-label="자료함" title="자료함 펴기"><svg class="pl-ic"><use href="#i-inbox"/></svg></button>
+        </div>
+        <div class="pl-head-sub">
+          <label class="pl-ref-field"><svg class="pl-ic"><use href="#i-book"/></svg><input class="pl-bare pl-ref" type="text" value="요 15:1-8" placeholder="본문  예: 요 15:1-8" aria-label="설교 본문"></label>
+          <button type="button" class="pl-info-toggle" aria-expanded="false">설교 정보<span class="pl-info-sum">11월 27일 · 금요기도회</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></button>
+        </div>
+      </div>
+
+      <div class="pl-body">
+        <div class="pl-main">
+          <div class="pl-map" data-layout="sides">
+            <div class="pl-map-view" tabindex="0" aria-label="마인드맵. 끌어서 움직이고 휠로 확대합니다.">
+              <div class="pl-map-canvas" style="width:1100px;height:744px;transform:translate(133px,35px) scale(1)">
+                <svg class="pl-map-lines" style="width:1100px;height:744px" aria-hidden="true">
+                  <path class="pl-map-line" data-kind="intro" data-to="b1" d="M690 372 C745 372 745 62 800 62"/>
+                  <path class="pl-map-line" data-kind="point" data-pt="1" data-to="b2" d="M690 372 C745 372 745 242 800 242"/>
+                  <path class="pl-map-line" data-kind="point" data-pt="2" data-to="b3" d="M690 372 C745 372 745 440 800 440"/>
+                  <path class="pl-map-line" data-kind="point" data-pt="3" data-to="b4" d="M410 372 C355 372 355 194 300 194"/>
+                  <path class="pl-map-line" data-kind="outro" data-to="b5" d="M410 372 C355 372 355 363 300 363"/>
+                  <path class="pl-map-line" data-kind="more" data-to="b6" d="M410 372 C355 372 355 493 300 493"/>
+                </svg>
+                <div class="pl-map-center" style="left:410px;top:286px">
+                  <div class="pl-map-title">가지는 붙어 있을 때 삽니다</div>
+                  <div class="pl-map-ref">요 15:1-8</div>
+                  <div class="pl-map-big" data-kind="big"><span class="pl-map-big-label">중심 사상</span>열매는 애써 짜내는 것이 아니라 예수님께 붙어 있을 때 맺힙니다</div>
+                </div>
+
+                <div class="pl-map-node" data-kind="intro" data-id="b1" style="left:800px;top:40px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">1</span><span class="pl-map-kind">서론</span></div>
+                  <p class="pl-map-thesis">열심히 사는데도 메마른 까닭을 묻습니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i1" draggable="true" tabindex="0"><span class="pl-item-no">1.1</span><span class="pl-map-item-text">바쁘게 섬겼는데 기쁨은 줄어든 한 주를 떠올리게 하기</span></li>
+                    <li class="pl-map-item" data-id="i2" draggable="true" tabindex="0"><span class="pl-item-no">1.2</span><span class="pl-map-item-text">나는 참포도나무요 내 아버지는 농부라</span></li>
+                  </ul>
+                </div>
+
+                <div class="pl-map-node" data-kind="point" data-pt="1" data-id="b2" style="left:800px;top:220px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">2</span><span class="pl-map-kind">대지 1</span><b class="pl-map-name">참포도나무는 예수님이십니다</b></div>
+                  <p class="pl-map-thesis">우리가 붙어 있을 곳은 한 분뿐입니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i3" draggable="true" tabindex="0"><span class="pl-item-no">2.1</span><span class="pl-map-item-text">구약에서 포도나무는 이스라엘을 가리키는 그림이었다. 예수께서 "참"이라 하신 것은 그 자리를 자신이 채우신다는 뜻이다.</span></li>
+                    <li class="pl-map-item pl-sub" data-id="i4" draggable="true" tabindex="0"><span class="pl-item-no">2.1.1</span><span class="pl-map-item-text">주께서 한 포도나무를 애굽에서 가져다가 민족들을 쫓아내시고 그것을 심으셨나이다</span></li>
+                  </ul>
+                </div>
+
+                <div class="pl-map-node" data-kind="point" data-pt="2" data-id="b3" style="left:800px;top:418px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">3</span><span class="pl-map-kind">대지 2</span><b class="pl-map-name">붙어 있는 것이 먼저입니다</b></div>
+                  <p class="pl-map-thesis">열매보다 먼저 "거하라"고 하십니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i5" draggable="true" tabindex="0"><span class="pl-item-no">3.1</span><span class="pl-map-item-text">내 안에 거하라 나도 너희 안에 거하리라</span></li>
+                    <li class="pl-map-item" data-id="i6" draggable="true" tabindex="0"><span class="pl-item-no">3.2</span><span class="pl-map-item-text">"거하다"는 머물다, 떠나지 않는다는 뜻이다. 이 단락에서 거듭 나오는 낱말이다.</span></li>
+                    <li class="pl-map-item pl-sub" data-id="i7" draggable="true" tabindex="0"><span class="pl-item-no">3.2.1</span><span class="pl-map-item-text">기도와 말씀을 "해야 할 일"이 아니라 "머무는 자리"로 말하기</span></li>
+                    <li class="pl-map-item pl-on" data-id="i8" draggable="true" tabindex="0"><span class="pl-item-no">3.3</span><span class="pl-map-item-text">4절부터 7절까지 "거하다"가 여러 번 되풀이된다. 명령은 "맺으라"가 아니라 "거하라"이다.</span></li>
+                  </ul>
+                  <button type="button" class="pl-map-more" aria-expanded="false">1개 더 보기</button>
+                </div>
+
+                <div class="pl-map-node" data-kind="point" data-pt="3" data-id="b4" style="left:40px;top:172px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">4</span><span class="pl-map-kind">대지 3</span><b class="pl-map-name">아버지는 열매를 위해 손질하십니다</b></div>
+                  <p class="pl-map-thesis">가지치기는 버림이 아니라 돌봄입니다</p>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i10" draggable="true" tabindex="0"><span class="pl-item-no">4.1</span><span class="pl-map-item-text">무릇 열매를 맺는 가지는 더 열매를 맺게 하려 하여 그것을 깨끗하게 하시느니라</span></li>
+                  </ul>
+                </div>
+
+                <div class="pl-map-node" data-kind="outro" data-id="b5" style="left:40px;top:341px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">5</span><span class="pl-map-kind">결론</span></div>
+                  <p class="pl-map-thesis">이번 주에 머물 자리 하나를 정합시다</p>
+                  <p class="pl-map-node-empty">비어 있습니다</p>
+                </div>
+
+                <div class="pl-map-node" data-kind="more" data-id="b6" style="left:40px;top:471px">
+                  <div class="pl-map-node-head"><span class="pl-map-no">6</span><span class="pl-map-kind">더 공부할 것</span></div>
+                  <ul class="pl-map-items">
+                    <li class="pl-map-item" data-id="i11" draggable="true" tabindex="0"><span class="pl-item-no">6.1</span><span class="pl-map-item-text">6절 "밖에 버려져"를 어떻게 풀지 주석 두 권 더 보기</span></li>
+                  </ul>
+                </div>
+
+                <!-- 3.3 을 눌렀을 때 뜨는 고침 칸. 캔버스 밖(.pl-map 바로 아래)에 두고 화면 좌표로 놓는다. -->
+              </div>
+            </div>
+            <div class="pl-pop" data-kind="point" data-pt="2" role="dialog" aria-label="항목 고치기" style="left:577px;top:478px">
+              <div class="pl-pop-head"><b>3.3</b><span>대지 2</span><span class="pl-grow"></span><button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기" title="지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button></div>
+              <div class="pl-edit">
+                <textarea class="pl-input pl-edit-text" aria-label="글" maxlength="4000">4절부터 7절까지 "거하다"가 여러 번 되풀이된다. 명령은 "맺으라"가 아니라 "거하라"이다.</textarea>
+                <div class="pl-edit-fields">
+                  <label class="pl-field"><span>출처</span><input class="pl-input pl-edit-src" type="text" value="본문연구 · 요 15:1-8"></label>
+                  <label class="pl-field"><span>메모</span><input class="pl-input pl-edit-note" type="text" value="원문 확인하기" placeholder="예: 예화로"></label>
+                </div>
+                <div class="pl-edit-actions">
+                  <button type="button" class="pl-link pl-edit-open">출처 열기</button>
+                  <span class="pl-grow"></span>
+                  <button type="button" class="pl-btn pl-btn-quiet pl-edit-cancel">취소</button>
+                  <button type="button" class="pl-btn pl-edit-done">마침</button>
+                </div>
+              </div>
+            </div>
+            <div class="pl-map-bar pl-map-bar-layout">
+              <div class="pl-seg pl-layouts" role="radiogroup" aria-label="배치">
+                <button type="button" role="radio" aria-checked="false" data-layout="ring">둘레로</button>
+                <button type="button" role="radio" class="pl-on" aria-checked="true" data-layout="sides">좌우로</button>
+              </div>
+            </div>
+            <div class="pl-map-bar pl-map-bar-zoom">
+              <button type="button" class="pl-ib pl-zoom-out" aria-label="작게" title="작게"><svg class="pl-ic"><use href="#i-minus"/></svg></button>
+              <span class="pl-zoom-val" aria-live="polite">100%</span>
+              <button type="button" class="pl-ib pl-zoom-in" aria-label="크게" title="크게"><svg class="pl-ic"><use href="#i-plus"/></svg></button>
+              <button type="button" class="pl-btn pl-btn-quiet pl-btn-sm pl-zoom-fit">한눈에</button>
+            </div>
+          </div>
+        </div>
+        <div class="pl-veil"></div>
+        <div class="pl-tray" role="complementary" aria-label="자료함"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====================================================================== (마) -->
+<h2 class="mk-h">(마) 좁은 화면 (폭 760px 이하)</h2>
+<p class="mk-p">자료함은 아래 서랍이고 닫혀 있어도 머리 한 줄은 보인다. 끌기 손잡이 대신 [옮기기] 차림표를 쓴다. 누르는 자리는 40px. 마인드맵은 "좌우로" 배치만 쓰고, 처음에는 가운데 카드와 오른쪽 줄이 화면에 들어오게 맞춘다(왼쪽 줄은 밀어서 본다).</p>
+<div class="mk-row">
+
+  <!-- 좁은 화면 1: 순서 보기, 서랍 닫힘, 옮기기 차림표 열림 -->
+  <div>
+    <div class="mk-frame mk-phone">
+      <div class="pl-root" data-view="outline" data-tray="closed">
+        <div class="pl-doc">
+          <div class="pl-head">
+            <div class="pl-head-row">
+              <button type="button" class="pl-ib pl-back" aria-label="설계도 목록으로"><svg class="pl-ic"><use href="#i-left"/></svg></button>
+              <input class="pl-bare pl-title" type="text" value="가지는 붙어 있을 때 삽니다" placeholder="설교 제목" aria-label="설교 제목">
+              <span class="pl-save" data-state="saved" role="status"><svg class="pl-ic"><use href="#i-check"/></svg>저장됨</span>
+              <div class="pl-seg pl-views" role="tablist" aria-label="보기">
+                <button type="button" role="tab" class="pl-on" aria-selected="true" data-view="outline">순서 보기</button>
+                <button type="button" role="tab" aria-selected="false" data-view="map">마인드맵</button>
+              </div>
+              <details class="pl-menu-wrap pl-export">
+                <summary class="pl-btn" aria-label="내보내기"><svg class="pl-ic"><use href="#i-share"/></svg><span>내보내기</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary>
+              </details>
+              <button type="button" class="pl-ib pl-tray-toggle" aria-label="자료함"><svg class="pl-ic"><use href="#i-inbox"/></svg></button>
+            </div>
+            <div class="pl-head-sub">
+              <label class="pl-ref-field"><svg class="pl-ic"><use href="#i-book"/></svg><input class="pl-bare pl-ref" type="text" value="요 15:1-8" aria-label="설교 본문"></label>
+              <button type="button" class="pl-info-toggle" aria-expanded="false">설교 정보<span class="pl-info-sum">11월 27일</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></button>
+            </div>
+          </div>
+          <div class="pl-body">
+            <div class="pl-main">
+              <div class="pl-outline-scroll">
+                <div class="pl-outline">
+                  <div class="pl-big" data-kind="big">
+                    <label class="pl-big-label" for="mk-big2">중심 사상</label>
+                    <textarea class="pl-bare pl-big-text" id="mk-big2" rows="1">열매는 애써 짜내는 것이 아니라 예수님께 붙어 있을 때 맺힙니다</textarea>
+                  </div>
+                  <div class="pl-branch" data-kind="intro" data-id="b1">
+                    <div class="pl-branch-head">
+                      <span class="pl-branch-no">1</span><span class="pl-branch-kind">서론</span>
+                      <input class="pl-bare pl-branch-name" type="text" value="" placeholder="이름을 붙여도 됩니다" aria-label="서론 이름">
+                      <span class="pl-branch-tools"></span>
+                    </div>
+                    <textarea class="pl-bare pl-thesis" rows="1" aria-label="서론에서 말할 한 문장">열심히 사는데도 메마른 까닭을 묻습니다</textarea>
+                    <ol class="pl-items">
+                      <li class="pl-item" data-id="i1" data-kind="own">
+                        <div class="pl-item-row">
+                          <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                          <span class="pl-item-no">1.1</span>
+                          <div class="pl-item-body">
+                            <div class="pl-item-text" tabindex="0" role="button">바쁘게 섬겼는데 기쁨은 줄어든 한 주를 떠올리게 하기</div>
+                            <div class="pl-item-meta"><span class="pl-kind">직접</span><span class="pl-note"><svg class="pl-ic"><use href="#i-pencil"/></svg>질문으로 시작</span></div>
+                          </div>
+                          <span class="pl-item-tools">
+                            <details class="pl-menu-wrap pl-move" open>
+                              <summary class="pl-ib" aria-label="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary>
+                              <div class="pl-menu" role="menu">
+                                <button type="button" role="menuitem" data-act="up" disabled><span>위로</span></button>
+                                <button type="button" role="menuitem" data-act="down"><span>아래로</span></button>
+                                <button type="button" role="menuitem" data-act="in" disabled><span>윗항목 아래 단계로</span></button>
+                                <button type="button" role="menuitem" data-act="out" disabled><span>한 단계 밖으로</span></button>
+                                <div class="pl-menu-sep"></div>
+                                <div class="pl-menu-label">다른 가지로</div>
+                                <button type="button" role="menuitem" data-branch="b2" data-kind="point" data-pt="1"><i class="pl-dot"></i><span>2. 참포도나무는 예수님이십니다</span></button>
+                                <button type="button" role="menuitem" data-branch="b3" data-kind="point" data-pt="2"><i class="pl-dot"></i><span>3. 붙어 있는 것이 먼저입니다</span></button>
+                                <button type="button" role="menuitem" data-branch="b4" data-kind="point" data-pt="3"><i class="pl-dot"></i><span>4. 아버지는 열매를 위해 손질하십니다</span></button>
+                                <button type="button" role="menuitem" data-branch="b5" data-kind="outro"><i class="pl-dot"></i><span>5. 결론</span></button>
+                                <div class="pl-menu-sep"></div>
+                                <button type="button" role="menuitem" class="pl-danger" data-act="del"><span>지우기</span></button>
+                              </div>
+                            </details>
+                            <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                          </span>
+                        </div>
+                      </li>
+                      <li class="pl-item" data-id="i2" data-kind="verse">
+                        <div class="pl-item-row">
+                          <button type="button" class="pl-grip" tabindex="-1" aria-hidden="true"><svg class="pl-ic"><use href="#i-grip"/></svg></button>
+                          <span class="pl-item-no">1.2</span>
+                          <div class="pl-item-body">
+                            <div class="pl-item-text" tabindex="0" role="button">나는 참포도나무요 내 아버지는 농부라</div>
+                            <div class="pl-item-meta"><span class="pl-kind">성경</span><button type="button" class="pl-src">요 15:1 · 개역개정</button></div>
+                          </div>
+                          <span class="pl-item-tools">
+                            <details class="pl-menu-wrap pl-move"><summary class="pl-ib" aria-label="옮기기"><svg class="pl-ic"><use href="#i-move"/></svg></summary></details>
+                            <button type="button" class="pl-ib pl-ib-danger pl-item-del" aria-label="항목 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                          </span>
+                        </div>
+                      </li>
+                    </ol>
+                    <button type="button" class="pl-add"><svg class="pl-ic"><use href="#i-plus"/></svg>항목</button>
+                  </div>
+                  <div class="pl-branch" data-kind="point" data-pt="1" data-id="b2">
+                    <div class="pl-branch-head">
+                      <span class="pl-branch-no">2</span><span class="pl-branch-kind">대지 1</span>
+                      <input class="pl-bare pl-branch-name" type="text" value="참포도나무는 예수님이십니다" aria-label="대지 1 이름">
+                      <span class="pl-branch-tools">
+                        <button type="button" class="pl-ib pl-branch-up" aria-label="대지를 앞으로" disabled><svg class="pl-ic"><use href="#i-up"/></svg></button>
+                        <button type="button" class="pl-ib pl-branch-down" aria-label="대지를 뒤로"><svg class="pl-ic"><use href="#i-dn"/></svg></button>
+                        <button type="button" class="pl-ib pl-ib-danger pl-branch-del" aria-label="대지 빼기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                      </span>
+                    </div>
+                    <textarea class="pl-bare pl-thesis" rows="1" aria-label="대지 1에서 말할 한 문장">우리가 붙어 있을 곳은 한 분뿐입니다</textarea>
+                    <ol class="pl-items"></ol>
+                    <p class="pl-branch-empty">아직 넣은 자료가 없습니다. 자료함에서 [넣기]로 넣거나 아래에서 직접 쓰세요.</p>
+                    <button type="button" class="pl-add"><svg class="pl-ic"><use href="#i-plus"/></svg>항목</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="pl-veil"></div>
+            <div class="pl-tray" role="complementary" aria-label="자료함">
+              <div class="pl-tray-head">
+                <b class="pl-tray-title">자료함</b><span class="pl-tray-n">6</span>
+                <span class="pl-grow"></span>
+                <button type="button" class="pl-ib pl-tray-close" aria-label="자료함 펴기" aria-expanded="false"><svg class="pl-ic pl-when-wide"><use href="#i-x"/></svg><svg class="pl-ic pl-when-narrow"><use href="#i-down"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="mk-cap">순서 보기 · 서랍 닫힘 · [옮기기] 차림표(지우기 포함)</p>
+  </div>
+
+  <!-- 좁은 화면 2: 서랍 열림 -->
+  <div>
+    <div class="mk-frame mk-phone">
+      <div class="pl-root" data-view="outline" data-tray="open">
+        <div class="pl-doc">
+          <div class="pl-head">
+            <div class="pl-head-row">
+              <button type="button" class="pl-ib pl-back" aria-label="설계도 목록으로"><svg class="pl-ic"><use href="#i-left"/></svg></button>
+              <input class="pl-bare pl-title" type="text" value="가지는 붙어 있을 때 삽니다" aria-label="설교 제목">
+              <span class="pl-save" data-state="saved" role="status"><svg class="pl-ic"><use href="#i-check"/></svg>저장됨</span>
+              <div class="pl-seg pl-views" role="tablist" aria-label="보기">
+                <button type="button" role="tab" class="pl-on" aria-selected="true" data-view="outline">순서 보기</button>
+                <button type="button" role="tab" aria-selected="false" data-view="map">마인드맵</button>
+              </div>
+              <details class="pl-menu-wrap pl-export">
+                <summary class="pl-btn" aria-label="내보내기"><svg class="pl-ic"><use href="#i-share"/></svg><span>내보내기</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary>
+              </details>
+            </div>
+            <div class="pl-head-sub">
+              <label class="pl-ref-field"><svg class="pl-ic"><use href="#i-book"/></svg><input class="pl-bare pl-ref" type="text" value="요 15:1-8" aria-label="설교 본문"></label>
+              <button type="button" class="pl-info-toggle" aria-expanded="false">설교 정보<span class="pl-info-sum">11월 27일</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></button>
+            </div>
+          </div>
+          <div class="pl-body">
+            <div class="pl-main">
+              <div class="pl-outline-scroll">
+                <div class="pl-outline">
+                  <div class="pl-big" data-kind="big">
+                    <label class="pl-big-label" for="mk-big3">중심 사상</label>
+                    <textarea class="pl-bare pl-big-text" id="mk-big3" rows="1">열매는 애써 짜내는 것이 아니라 예수님께 붙어 있을 때 맺힙니다</textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="pl-veil"></div>
+            <div class="pl-tray" role="complementary" aria-label="자료함">
+              <div class="pl-tray-head">
+                <b class="pl-tray-title">자료함</b><span class="pl-tray-n">6</span>
+                <span class="pl-grow"></span>
+                <button type="button" class="pl-ib pl-tray-close" aria-label="자료함 접기" aria-expanded="true"><svg class="pl-ic pl-when-wide"><use href="#i-x"/></svg><svg class="pl-ic pl-when-narrow"><use href="#i-down"/></svg></button>
+              </div>
+              <div class="pl-tray-tools">
+                <label class="pl-search"><svg class="pl-ic"><use href="#i-search"/></svg><input class="pl-input pl-tray-q" type="search" value="거하" placeholder="자료함에서 찾기" aria-label="자료함에서 찾기"></label>
+                <div class="pl-tray-acts">
+                  <button type="button" class="pl-btn pl-btn-quiet pl-btn-sm pl-clip-new"><svg class="pl-ic"><use href="#i-pencil"/></svg>직접 쓰기</button>
+                  <button type="button" class="pl-btn pl-btn-quiet pl-btn-sm pl-clip-paste"><svg class="pl-ic"><use href="#i-copy"/></svg>붙여넣기</button>
+                </div>
+              </div>
+              <ul class="pl-clips">
+                <li class="pl-clip" data-id="c1" data-kind="verse">
+                  <p class="pl-clip-text">나는 포도나무요 너희는 가지라 그가 내 안에, 내가 그 안에 <mark>거하</mark>면 사람이 열매를 많이 맺나니 나를 떠나서는 너희가 아무 것도 할 수 없음이라</p>
+                  <div class="pl-clip-meta"><span class="pl-kind">성경</span><span class="pl-clip-src">요 15:5 · 개역개정</span></div>
+                  <div class="pl-clip-foot">
+                    <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음</span>
+                    <span class="pl-grow"></span>
+                    <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                    <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                  </div>
+                </li>
+                <li class="pl-clip" data-id="c3" data-kind="lex">
+                  <p class="pl-clip-text">메노(μένω): 머물다, <mark>거하</mark>다, 남아 있다. 잠깐 들르는 것이 아니라 자리를 지키는 것.</p>
+                  <div class="pl-clip-meta"><span class="pl-kind">사전</span><span class="pl-clip-src">헬라어 사전(견본) · μένω</span></div>
+                  <div class="pl-clip-foot">
+                    <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음</span>
+                    <span class="pl-grow"></span>
+                    <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                    <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                  </div>
+                </li>
+                <li class="pl-clip pl-used" data-id="c4" data-kind="page">
+                  <p class="pl-clip-text">"<mark>거하</mark>다"는 머물다, 떠나지 않는다는 뜻이다. 이 단락에서 거듭 나오는 낱말이다.</p>
+                  <div class="pl-clip-meta"><span class="pl-kind">책</span><span class="pl-clip-src">《요한복음 강해》(견본) p.212</span></div>
+                  <div class="pl-clip-foot">
+                    <span class="pl-used-mark"><svg class="pl-ic"><use href="#i-check"/></svg>넣음 · 대지 2</span>
+                    <span class="pl-grow"></span>
+                    <details class="pl-menu-wrap pl-put"><summary class="pl-btn pl-btn-sm">넣기<svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary></details>
+                    <button type="button" class="pl-ib pl-ib-danger pl-clip-del" aria-label="자료함에서 지우기"><svg class="pl-ic"><use href="#i-trash"/></svg></button>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="mk-cap">자료함 서랍 열림 · "거하"로 찾는 중</p>
+  </div>
+
+  <!-- 좁은 화면 3: 마인드맵(좌우로, 한눈에) -->
+  <div>
+    <div class="mk-frame mk-phone">
+      <div class="pl-root" data-view="map" data-tray="closed">
+        <div class="pl-doc">
+          <div class="pl-head">
+            <div class="pl-head-row">
+              <button type="button" class="pl-ib pl-back" aria-label="설계도 목록으로"><svg class="pl-ic"><use href="#i-left"/></svg></button>
+              <input class="pl-bare pl-title" type="text" value="가지는 붙어 있을 때 삽니다" aria-label="설교 제목">
+              <span class="pl-save" data-state="saved" role="status"><svg class="pl-ic"><use href="#i-check"/></svg>저장됨</span>
+              <div class="pl-seg pl-views" role="tablist" aria-label="보기">
+                <button type="button" role="tab" aria-selected="false" data-view="outline">순서 보기</button>
+                <button type="button" role="tab" class="pl-on" aria-selected="true" data-view="map">마인드맵</button>
+              </div>
+              <details class="pl-menu-wrap pl-export">
+                <summary class="pl-btn" aria-label="내보내기"><svg class="pl-ic"><use href="#i-share"/></svg><span>내보내기</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></summary>
+              </details>
+            </div>
+            <div class="pl-head-sub">
+              <label class="pl-ref-field"><svg class="pl-ic"><use href="#i-book"/></svg><input class="pl-bare pl-ref" type="text" value="요 15:1-8" aria-label="설교 본문"></label>
+              <button type="button" class="pl-info-toggle" aria-expanded="false">설교 정보<span class="pl-info-sum">11월 27일</span><svg class="pl-ic pl-chev"><use href="#i-down"/></svg></button>
+            </div>
+          </div>
+          <div class="pl-body">
+            <div class="pl-main">
+              <div class="pl-map" data-layout="sides">
+                <div class="pl-map-view" tabindex="0" aria-label="마인드맵. 끌어서 움직이고 두 손가락으로 확대합니다.">
+                  <div class="pl-map-canvas" style="width:1100px;height:778px;transform:translate(-218px,53px) scale(0.56)">
+                    <svg class="pl-map-lines" style="width:1100px;height:778px" aria-hidden="true">
+                      <path class="pl-map-line" data-kind="intro" data-to="b1" d="M690 389 C745 389 745 62 800 62"/>
+                      <path class="pl-map-line" data-kind="point" data-pt="1" data-to="b2" d="M690 389 C745 389 745 254 800 254"/>
+                      <path class="pl-map-line" data-kind="point" data-pt="2" data-to="b3" d="M690 389 C745 389 745 452 800 452"/>
+                      <path class="pl-map-line" data-kind="point" data-pt="3" data-to="b4" d="M410 389 C355 389 355 272 300 272"/>
+                      <path class="pl-map-line" data-kind="outro" data-to="b5" d="M410 389 C355 389 355 441 300 441"/>
+                    </svg>
+                    <div class="pl-map-center" style="left:410px;top:303px">
+                      <div class="pl-map-title">가지는 붙어 있을 때 삽니다</div>
+                      <div class="pl-map-ref">요 15:1-8</div>
+                      <div class="pl-map-big" data-kind="big"><span class="pl-map-big-label">중심 사상</span>열매는 애써 짜내는 것이 아니라 예수님께 붙어 있을 때 맺힙니다</div>
+                    </div>
+                    <div class="pl-map-node" data-kind="intro" data-id="b1" style="left:800px;top:40px">
+                      <div class="pl-map-node-head"><span class="pl-map-no">1</span><span class="pl-map-kind">서론</span></div>
+                      <p class="pl-map-thesis">열심히 사는데도 메마른 까닭을 묻습니다</p>
+                      <ul class="pl-map-items">
+                        <li class="pl-map-item" data-id="i1" tabindex="0"><span class="pl-item-no">1.1</span><span class="pl-map-item-text">바쁘게 섬겼는데 기쁨은 줄어든 한 주를 떠올리게 하기</span></li>
+                        <li class="pl-map-item" data-id="i2" tabindex="0"><span class="pl-item-no">1.2</span><span class="pl-map-item-text">나는 참포도나무요 내 아버지는 농부라</span></li>
+                      </ul>
+                    </div>
+                    <div class="pl-map-node" data-kind="point" data-pt="1" data-id="b2" style="left:800px;top:232px">
+                      <div class="pl-map-node-head"><span class="pl-map-no">2</span><span class="pl-map-kind">대지 1</span><b class="pl-map-name">참포도나무는 예수님이십니다</b></div>
+                      <p class="pl-map-thesis">우리가 붙어 있을 곳은 한 분뿐입니다</p>
+                      <ul class="pl-map-items">
+                        <li class="pl-map-item" data-id="i3" tabindex="0"><span class="pl-item-no">2.1</span><span class="pl-map-item-text">구약에서 포도나무는 이스라엘을 가리키는 그림이었다. 예수께서 "참"이라 하신 것은 그 자리를 자신이 채우신다는 뜻이다.</span></li>
+                        <li class="pl-map-item pl-sub" data-id="i4" tabindex="0"><span class="pl-item-no">2.1.1</span><span class="pl-map-item-text">주께서 한 포도나무를 애굽에서 가져다가 민족들을 쫓아내시고 그것을 심으셨나이다</span></li>
+                      </ul>
+                    </div>
+                    <div class="pl-map-node" data-kind="point" data-pt="2" data-id="b3" style="left:800px;top:430px">
+                      <div class="pl-map-node-head"><span class="pl-map-no">3</span><span class="pl-map-kind">대지 2</span><b class="pl-map-name">붙어 있는 것이 먼저입니다</b></div>
+                      <p class="pl-map-thesis">열매보다 먼저 "거하라"고 하십니다</p>
+                      <ul class="pl-map-items">
+                        <li class="pl-map-item" data-id="i5" tabindex="0"><span class="pl-item-no">3.1</span><span class="pl-map-item-text">내 안에 거하라 나도 너희 안에 거하리라</span></li>
+                        <li class="pl-map-item" data-id="i6" tabindex="0"><span class="pl-item-no">3.2</span><span class="pl-map-item-text">"거하다"는 머물다, 떠나지 않는다는 뜻이다. 이 단락에서 거듭 나오는 낱말이다.</span></li>
+                        <li class="pl-map-item pl-sub" data-id="i7" tabindex="0"><span class="pl-item-no">3.2.1</span><span class="pl-map-item-text">기도와 말씀을 "해야 할 일"이 아니라 "머무는 자리"로 말하기</span></li>
+                        <li class="pl-map-item" data-id="i8" tabindex="0"><span class="pl-item-no">3.3</span><span class="pl-map-item-text">4절부터 7절까지 "거하다"가 여러 번 되풀이된다. 명령은 "맺으라"가 아니라 "거하라"이다.</span></li>
+                      </ul>
+                      <button type="button" class="pl-map-more" aria-expanded="false">1개 더 보기</button>
+                    </div>
+                    <div class="pl-map-node" data-kind="point" data-pt="3" data-id="b4" style="left:40px;top:250px">
+                      <div class="pl-map-node-head"><span class="pl-map-no">4</span><span class="pl-map-kind">대지 3</span><b class="pl-map-name">아버지는 열매를 위해 손질하십니다</b></div>
+                      <p class="pl-map-thesis">가지치기는 버림이 아니라 돌봄입니다</p>
+                      <ul class="pl-map-items">
+                        <li class="pl-map-item" data-id="i10" tabindex="0"><span class="pl-item-no">4.1</span><span class="pl-map-item-text">무릇 열매를 맺는 가지는 더 열매를 맺게 하려 하여 그것을 깨끗하게 하시느니라</span></li>
+                      </ul>
+                    </div>
+                    <div class="pl-map-node" data-kind="outro" data-id="b5" style="left:40px;top:419px">
+                      <div class="pl-map-node-head"><span class="pl-map-no">5</span><span class="pl-map-kind">결론</span></div>
+                      <p class="pl-map-thesis">이번 주에 머물 자리 하나를 정합시다</p>
+                      <p class="pl-map-node-empty">비어 있습니다</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="pl-map-bar pl-map-bar-layout">
+                  <div class="pl-seg pl-layouts" role="radiogroup" aria-label="배치">
+                    <button type="button" role="radio" aria-checked="false" data-layout="ring">둘레로</button>
+                    <button type="button" role="radio" class="pl-on" aria-checked="true" data-layout="sides">좌우로</button>
+                  </div>
+                </div>
+                <div class="pl-map-bar pl-map-bar-zoom">
+                  <button type="button" class="pl-ib pl-zoom-out" aria-label="작게"><svg class="pl-ic"><use href="#i-minus"/></svg></button>
+                  <span class="pl-zoom-val" aria-live="polite">56%</span>
+                  <button type="button" class="pl-ib pl-zoom-in" aria-label="크게"><svg class="pl-ic"><use href="#i-plus"/></svg></button>
+                  <button type="button" class="pl-btn pl-btn-quiet pl-btn-sm pl-zoom-fit">한눈에</button>
+                </div>
+              </div>
+            </div>
+            <div class="pl-veil"></div>
+            <div class="pl-tray" role="complementary" aria-label="자료함">
+              <div class="pl-tray-head">
+                <b class="pl-tray-title">자료함</b><span class="pl-tray-n">6</span>
+                <span class="pl-grow"></span>
+                <button type="button" class="pl-ib pl-tray-close" aria-label="자료함 펴기" aria-expanded="false"><svg class="pl-ic pl-when-wide"><use href="#i-x"/></svg><svg class="pl-ic pl-when-narrow"><use href="#i-down"/></svg></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="mk-cap">마인드맵 · 좌우로 · 처음 모습</p>
+  </div>
+</div>
+
+</body>
+</html>

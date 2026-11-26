@@ -858,3 +858,24 @@ table.parse tr:hover td{background:var(--acc-soft)}
   .fx-row{grid-template-columns:16px minmax(56px,auto) minmax(0,1fr) auto auto}
   .fx-row .fx-len{display:none}
 }
+
+/* ============================================================ 설교 설계도(plan.js) 자리와 담기 단추(plan-clip.js) */
+#view-plan{background:var(--bg)}
+#plan-root{flex:1;min-height:0;min-width:0}
+/* 고른 글 곁에 뜨는 [설계도에 담기] 줄. 설계도 화면 밖(본문·주석·보고서 위)에 뜨므로 앱 색을 그대로 쓴다. */
+.pl-clipbar{
+  position:fixed;z-index:2300;display:flex;align-items:stretch;
+  background:var(--paper);border:1px solid var(--line2);border-radius:var(--r1);box-shadow:var(--shadow);
+  font-family:var(--ui-font);font-size:13px;overflow:hidden;
+}
+.pl-clipbar button{
+  display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;
+  border:none;border-radius:0;background:none;color:var(--fg);font-size:13px;white-space:nowrap;
+}
+.pl-clipbar button:hover{background:var(--acc-soft);color:var(--acc)}
+.pl-clipbar .pl-clipbar-more{padding:0 8px;border-left:1px solid var(--line)}
+.pl-clipbar-ic{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.pl-clipbar.pl-clipbar-open{flex-direction:column;min-width:200px;max-width:300px;max-height:60vh;overflow-y:auto;padding:4px 0}
+.pl-clipbar.pl-clipbar-open button{width:100%;justify-content:flex-start;height:30px;overflow:hidden;text-overflow:ellipsis}
+.pl-clipbar-label{padding:6px 10px 4px;font-size:12px;font-weight:700;color:var(--fg2)}
+.pl-clipbar-note{padding:6px 10px 8px;font-size:12px;line-height:1.55;color:var(--mut);white-space:normal}
